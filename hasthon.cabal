@@ -1,0 +1,14 @@
+Name:                hasthon
+Version:             0.1
+Description:         Pythong implementation written in Haskell.
+License:             MIT
+License-file:        LICENSE
+Author:              Sukit Tretriluxana
+Maintainer:          tsukit@gmail.com
+Build-Type:          Simple
+Cabal-Version:       >=1.2
+
+Executable hasthon
+  Main-is:           src/Main.hs
+  Build-Depends:     base >= 3 && < 5
+
