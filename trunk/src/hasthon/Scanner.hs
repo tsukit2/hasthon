@@ -44,12 +44,32 @@ test input = do
 scanner :: String -> Either ParseError [Token]
 scanner input = do
    tokens <- tokenize input
-   return (indentDedent . joinLine $ tokens)
+   return (indentDedent . joinLines . removeBlankLines $ tokens)
 
 
 -- join lines
-joinLine :: [Token] -> [Token]
-joinLine = id
+joinLines :: [Token] -> [Token]
+joinLines = joinIt 0
+   where joinIt l (p@(Token (TTDelimeter delim) _) : rest) | delim `elem` [ "[", "(", "{" ] = p : joinIt (l+1) rest
+                                                           | delim `elem` [ "]", ")", "}" ] = p : joinIt (l-1) rest
+                                                           | otherwise                      = p : joinIt l rest
+         joinIt l (nl@(Token TTNewline _) : rest)          | l > 0                          = joinIt l rest
+                                                           | otherwise                      = nl : joinIt l rest
+         joinIt l ((Token TTLineJoiner _) : (Token TTNewline _) : rest)                     = joinIt l rest
+         joinIt l (t:rest)                                                                  = t : joinIt l rest
+         joinIt _ []                                                                        = []
+
+
+-- remove blank lines and comments
+removeBlankLines :: [Token] -> [Token]
+removeBlankLines tokens = case (removeIt tokens) of
+                              ((Token TTNewline _) : rest) -> rest -- remove any starting new line
+                              whatever                     -> whatever
+   where removeIt (nl@(Token TTNewline _)  : (Token TTNewline _)           : rest)   = removeIt (nl:rest)
+         removeIt ((Token (TTComment _) _) : rest@((Token TTNewline _)     : _))     = removeIt rest
+         removeIt (nl@(Token TTNewline _)  : (Token (TTComment _) _)       : rest)   = removeIt (nl:rest)
+         removeIt (token:rest)                                                       = token : removeIt rest
+         removeIt []                                                                 = []
 
 -- perform indent/dedent injection
 indentDedent :: [Token] -> [Token]
@@ -123,7 +143,7 @@ setBasedToken p s f em = do
 -- string token
 stringToken :: Parser TokenType
 stringToken = do
-   str <- (shortString <|> longString)
+   str <- (try longString <|> shortString)
    return $ TTLiteral $ LTString str
    where shortString = do pos <- getPosition
                           oneOf "'\"" 
