@@ -4,6 +4,7 @@ import Text.Parsec
 import Text.Parsec.Prim
 import Text.Parsec.Char
 import Text.Parsec.String
+import qualified Data.Set as Set
 
 -- token type
 data TokenType = TTIndent
@@ -62,119 +63,112 @@ tokenize = parse (do tokens <- many pythonTokens
 
 -- root grammar of python tokens
 pythonTokens :: Parser Token
-pythonTokens = 
-   lexeme True keywordToken <|> 
-   lexeme False identifierToken <|> 
-   lexeme False newLine <|> 
-   lexeme False operatorToken <|>
-   lexeme False delimeterToken <|>
-   lexeme False numberToken <|> 
-   stringToken <|>
-   commentToken <|>
-   lineJoinerToken
+pythonTokens = do
+   pos <- getPosition
+   tokenType <- lexeme True keywordToken <|> 
+                lexeme False identifierToken <|> 
+                lexeme False newLine <|> 
+                lexeme False operatorToken <|>
+                lexeme False delimeterToken <|>
+                lexeme False numberToken <|> 
+                stringToken <|>
+                commentToken <|>
+                lineJoinerToken
+   return (Token tokenType pos)
 
 -- make a parser to eat up following space
-lexeme :: Bool -> Parser Token -> Parser Token
+lexeme :: Bool -> Parser TokenType -> Parser TokenType
 lexeme sp p = do
-   tok <- p
+   tokenType <- p
    let spfunc = if sp then many1 else many
    spfunc (char ' ') <|> (eof >> return "")
-   return tok
-
--- keyword token
-keywordToken :: Parser Token
-keywordToken = do
-   pos <- getPosition
-   keyword <- choice keywordParsers
-   return $ Token (TTKeyword keyword) pos
-   where keywordParsers = map (try . string) keywords
+   return tokenType
 
 -- identifier token
-identifierToken :: Parser Token
+identifierToken :: Parser TokenType
 identifierToken = do
    try (
       do
-         pos <- getPosition
          firstLetter <- letter 
          rest <- many alphaNum
          let id = firstLetter : rest
-         if not $ id `elem` keywords
-            then return $ Token (TTIdentifier id) pos
-            else fail ""
+         if not $ id `Set.member` keywordsSet
+            then return $ TTIdentifier id
+            else fail "not an identifier"
       )
 
+-- keyword token
+keywordToken :: Parser TokenType
+keywordToken = setBasedToken (many letter) keywordsSet TTKeyword "not a keyword"
 
 -- operator token
-operatorToken :: Parser Token
-operatorToken = do
-   pos <- getPosition
-   operator <- choice operatorParsers
-   return $ Token (TTOperator operator) pos
-   where operatorParsers = map (try . string) operators
+operatorToken :: Parser TokenType
+operatorToken = setBasedToken (many (oneOf operatorChars)) operatorsSet TTOperator "not an operator"
 
 -- delimeter token
-delimeterToken :: Parser Token
-delimeterToken = do
-   pos <- getPosition
-   delimeter <- choice delimeterParsers
-   return $ Token (TTDelimeter delimeter) pos
-   where delimeterParsers = map (try . string) delimeters
+delimeterToken :: Parser TokenType
+delimeterToken = setBasedToken (many (oneOf delimeterChars)) delimetersSet TTDelimeter "not a delimeter"
+
+-- set-based token type (utility to help create token based on set
+setBasedToken :: Parser String -> Set.Set String -> (String -> TokenType) -> String -> Parser TokenType
+setBasedToken p s f em = do
+   try (
+      do
+         tokstr <- p
+         if tokstr `Set.member` s 
+            then return $ f tokstr
+            else fail em
+       )
 
 -- string token
-stringToken :: Parser Token
+stringToken :: Parser TokenType
 stringToken = do
-   pos <- getPosition
    strs <- many1 (lexeme False (shortString <|> longString))
-   let strvals = map (\(Token (TTLiteral (LTString s)) _) -> s) strs
-   return $ Token (TTLiteral $ LTString $ concat strvals) pos
+   let strvals = map (\(TTLiteral (LTString s)) -> s) strs
+   return $ TTLiteral $ LTString $ concat strvals
    where shortString = do pos <- getPosition
                           oneOf "'\"" 
                           s <- many $ noneOf "'\""
                           oneOf "'\"" 
-                          return $ Token (TTLiteral $ LTString s) pos
+                          return $ TTLiteral $ LTString s
          longString  = do pos <- getPosition
                           count 3 $ oneOf "'\"" 
                           s <- many $ noneOf "'\""
                           count 3 $ oneOf "'\"" 
-                          return $ Token (TTLiteral $ LTString s) pos
+                          return $ TTLiteral $ LTString s
 
    
 -- number token
-numberToken :: Parser Token
+numberToken :: Parser TokenType
 numberToken = 
    try ( do
-      pos <- getPosition
       digits <- many1 digit
       notFollowedBy letter
       let n = read digits :: Integer
-      return $ Token (TTLiteral $ LTInteger n) pos
+      return $ TTLiteral $ LTInteger n
       )
 
 -- new line token
-newLine :: Parser Token
+newLine :: Parser TokenType
 newLine = do 
-   pos <- getPosition
    try (string "\r\n") <|> string "\n" <|> string "\r" -- <|> (eof >> return "")
-   return $ Token TTNewline pos
+   return TTNewline
 
 -- line joiner '\' token
-lineJoinerToken :: Parser Token
+lineJoinerToken :: Parser TokenType
 lineJoinerToken = do
-   pos <- getPosition
    char '\\'
    lookAhead newLine
-   return $ Token TTLineJoiner pos
+   return $ TTLineJoiner
 
 -- comment token
-commentToken :: Parser Token
+commentToken :: Parser TokenType
 commentToken = do
-   pos <- getPosition
    char '#'
-   comments <- manyTill anyChar (lookAhead newLine <|> (eof >> return (Token TTNewline pos)))
-   return $ Token (TTComment comments) pos
+   comments <- manyTill anyChar (lookAhead newLine <|> (eof >> return TTNewline))
+   return $ TTComment comments
 
 -- keywords
-keywords :: [String]
 keywords = [
                "False",   "None",     "True",      "and",     "as",      "assert",
                "break",   "class",    "continue",  "def",     "del",     "elif",
@@ -184,12 +178,18 @@ keywords = [
                "while",   "with",     "yield"
            ]
 
+keywordsSet = Set.fromList keywords
+
 -- operators
 operators = [
                "+",      "-",       "*",       "**",      "/",       "//",      "%",
                "<<",     ">>",      "&",       "|",       "^",       "~",
                "<",      ">",       "<=",      ">=",      "==",      "!="
             ]
+
+operatorsSet = Set.fromList operators
+
+operatorChars = Set.toList $ Set.fromList $ concat operators
 
 -- delimeters
 delimeters = [
@@ -198,4 +198,8 @@ delimeters = [
                "+=",      "-=",      "*=",      "/=",      "//=",     "%=",
                "&=",      "|=",      "^=",      ">>=",     "<<=",     "**="
              ]
+
+delimetersSet = Set.fromList delimeters
+
+delimeterChars = Set.toList $ Set.fromList $ concat delimeters
 
