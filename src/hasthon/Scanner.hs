@@ -71,7 +71,7 @@ pythonTokens = do
                 lexeme False operatorToken <|>
                 lexeme False delimeterToken <|>
                 lexeme False numberToken <|> 
-                stringToken <|>
+                lexeme False stringToken <|>
                 commentToken <|>
                 lineJoinerToken
    return (Token tokenType pos)
@@ -123,19 +123,18 @@ setBasedToken p s f em = do
 -- string token
 stringToken :: Parser TokenType
 stringToken = do
-   strs <- many1 (lexeme False (shortString <|> longString))
-   let strvals = map (\(TTLiteral (LTString s)) -> s) strs
-   return $ TTLiteral $ LTString $ concat strvals
+   str <- (shortString <|> longString)
+   return $ TTLiteral $ LTString str
    where shortString = do pos <- getPosition
                           oneOf "'\"" 
                           s <- many $ noneOf "'\""
                           oneOf "'\"" 
-                          return $ TTLiteral $ LTString s
+                          return s
          longString  = do pos <- getPosition
                           count 3 $ oneOf "'\"" 
                           s <- many $ noneOf "'\""
                           count 3 $ oneOf "'\"" 
-                          return $ TTLiteral $ LTString s
+                          return s
 
    
 -- number token
