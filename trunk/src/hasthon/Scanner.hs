@@ -5,10 +5,13 @@ import Text.Parsec.Prim
 import Text.Parsec.Char
 import Text.Parsec.String
 import qualified Data.Set as Set
+import Data.List
+import Text.Parsec.Error
+import Control.Monad.Error
 
 -- token type
-data TokenType = TTIndent
-               | TTDedent
+data TokenType = TTIndent Int
+               | TTDedent Int
                | TTNewline
                | TTLineJoiner
                | TTKeyword String
@@ -29,22 +32,41 @@ data LiteralValue = LTString String
                   deriving (Eq, Show)
 
 -- token
-data Token = Token TokenType SourcePos
+data Token = Token TokenType (Int,Int)
              deriving (Eq, Show)
+
+-- scan error object
+data ScanError = ScanError String (Int,Int)
+
+instance Show ScanError where
+   show (ScanError msg _) = msg
+
+instance Error ScanError
 
 -- test scanner to print token in its own line
 test :: String -> IO ()
 test input = do
-  case (scanner input) of
+  case (scan input) of
       Right tokens   -> mapM_ (putStrLn . show) tokens
       Left err       -> print err
 
 
 -- scanner start here
-scanner :: String -> Either ParseError [Token]
-scanner input = do
-   tokens <- tokenize input
-   return (indentDedent . joinLines . removeBlankLines $ tokens)
+scan :: String -> Either ScanError [Token]
+scan input = do
+   case tokenResult of
+      Right tokens -> indentDedent . joinLines . removeBlankLines $ tokens
+      Left err     -> let message = show err
+                          p@(l,c) = let pos = errorPos err in (sourceLine pos, sourceColumn pos)
+                      in Left $ ScanError message p
+   where tokenResult = tokenize input
+
+
+-- tokenizer
+tokenize :: String -> Either ParseError [Token]
+tokenize = parse (do tokens <- many pythonTokens
+                     eof
+                     return tokens) ""
 
 
 -- join lines
@@ -71,15 +93,27 @@ removeBlankLines tokens = case (removeIt tokens) of
          removeIt (token:rest)                                                       = token : removeIt rest
          removeIt []                                                                 = []
 
--- perform indent/dedent injection
-indentDedent :: [Token] -> [Token]
-indentDedent = id
-
--- tokenizer
-tokenize :: String -> Either ParseError [Token]
-tokenize = parse (do tokens <- many pythonTokens
-                     eof
-                     return tokens) ""
+-- perform indent/dedent injection. tokens being passed are assumed to have comments and duplicate newlines removed
+-- note that we use stack of minimum one element so we don't have to deal with the stack empty condition
+indentDedent :: [Token] -> Either ScanError [Token]
+indentDedent = xdentIt [1] True
+   where xdentIt :: [Int] -> Bool -> [Token] -> Either ScanError [Token]
+         xdentIt st@(p:ps) True  (tok@(Token _ pos@(l,c)) : rest)         | c > p     = xdentIt (c:st) False rest >>= (\rest -> return $ indent pos : tok : rest)
+                                                                          | c < p     = dedent st pos (tok:rest)
+                                                                          | otherwise = xdentIt st False rest >>= (\rest -> return $ tok : rest)
+         xdentIt st@(p:ps) False (tok@(Token TTNewline pos@(l,c)) : rest) | null rest = dedent st pos [] >>= (\rest -> return $ tok : rest)
+                                                                          | otherwise = xdentIt st True rest >>= (\rest -> return $ tok : rest)
+         xdentIt st        False (tok@(Token _ pos@(l,c)) : rest)                     = xdentIt st False rest >>= (\rest -> return $ tok : rest)
+         xdentIt _         _     []                                                   = return []
+         indent (l,c) = Token (TTIndent c) (l,c)
+         dedent st@(p:ps) pos@(l,c) rest = 
+               if null rest || c `elem` st
+                  then doDedent st pos rest
+                  else throwError (ScanError ("unindent does not match any outer indentation level at " ++ (show pos)) pos)
+            where doDedent st@(p:ps) pos@(l,c) rest | c < p     = dedent ps pos rest >>= (\rest -> return $ (Token (TTDedent p) pos) : rest)
+                                                    | otherwise = if null rest
+                                                          then return $ map (\p' -> (Token (TTDedent p') pos)) $ init st
+                                                          else xdentIt st False rest
 
 -- root grammar of python tokens
 pythonTokens :: Parser Token
@@ -94,7 +128,7 @@ pythonTokens = do
                 lexeme False stringToken <|>
                 commentToken <|>
                 lineJoinerToken
-   return (Token tokenType pos)
+   return (Token tokenType (sourceLine pos, sourceColumn pos))
 
 -- make a parser to eat up following space
 lexeme :: Bool -> Parser TokenType -> Parser TokenType
@@ -145,13 +179,11 @@ stringToken :: Parser TokenType
 stringToken = do
    str <- (try longString <|> shortString)
    return $ TTLiteral $ LTString str
-   where shortString = do pos <- getPosition
-                          oneOf "'\"" 
+   where shortString = do oneOf "'\"" 
                           s <- many $ noneOf "'\""
                           oneOf "'\"" 
                           return s
-         longString  = do pos <- getPosition
-                          count 3 $ oneOf "'\"" 
+         longString  = do count 3 $ oneOf "'\"" 
                           s <- many $ noneOf "'\""
                           count 3 $ oneOf "'\"" 
                           return s
