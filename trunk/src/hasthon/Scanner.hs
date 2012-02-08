@@ -1,4 +1,11 @@
-module Hasthon.Scanner where
+module Hasthon.Scanner ( 
+   TokenType, 
+   LiteralValue,
+   Token,
+   ScanError,
+   scan
+   ) where
+
 
 import Text.Parsec 
 import Text.Parsec.Prim
@@ -37,6 +44,7 @@ data Token = Token TokenType (Int,Int)
 
 -- scan error object
 data ScanError = ScanError String (Int,Int)
+                 deriving (Eq)
 
 instance Show ScanError where
    show (ScanError msg _) = msg
