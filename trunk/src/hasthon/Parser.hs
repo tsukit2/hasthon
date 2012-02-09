@@ -18,24 +18,63 @@ data ParseError = ScannerError ScanError
 -- this is because now we're not really parsing string but tokens
 type Parser = Parsec [Token] ()
 
+-- parse mode
+data ParseMode = SingleInput
+               | FileInput
+               | EvalInput
+               deriving (Eq, Show)
+
 
 -- test parser to print syntax tree structure
-test :: String -> IO ()
-test input = do
-  case (Hasthon.Parser.parse input) of
+test :: ParseMode -> String -> IO ()
+test mode input = do
+  case (Hasthon.Parser.parse mode input) of
       Right abs   -> (putStrLn . show) abs
       Left err    -> print err
 
 -- parse start here
-parse :: String -> Either Hasthon.Parser.ParseError ABSTree
-parse input = 
+parse :: ParseMode -> String -> Either Hasthon.Parser.ParseError ABSTree
+parse mode input = 
    case (scan input) of
-      Right tokens   -> case (runParser pythonSyntax () "" tokens) of
+      Right tokens   -> case (runParser pythonGrammar () "" tokens) of
                            Right abs   -> Right abs
                            Left err    -> Left $ ParsecError err
       Left err       -> Left $ ScannerError err 
+   where pythonGrammar = case mode of
+                            SingleInput -> singleInputGrammar
+                            FileInput   -> fileInputGrammar
+                            EvalInput   -> evalInputGrammar
 
--- root grammar of python syntax
-pythonSyntax :: Parser ABSTree
-pythonSyntax = do 
+-- single input grammar
+singleInputGrammar :: Parser ABSTree
+singleInputGrammar = do 
    return ABSTree
+
+-- file input grammar
+fileInputGrammar :: Parser ABSTree
+fileInputGrammar = do 
+   many stmt
+   return ABSTree
+
+-- eval input grammar
+evalInputGrammar :: Parser ABSTree
+evalInputGrammar = do 
+   return ABSTree
+
+-- statement
+stmt :: Parser ABSTree
+stmt = simpleStmt<|> compoundStmt
+
+-- simple statement
+simpleStmt :: Parser ABSTree
+simpleStmt = do
+   return ABSTree
+
+-- compound statement statement
+compoundStmt :: Parser ABSTree
+compoundStmt = do
+   return ABSTree
+
+
+
+
