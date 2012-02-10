@@ -1,7 +1,7 @@
 module Hasthon.Scanner ( 
-   TokenType, 
-   LiteralValue,
-   Token,
+   TokenType(..), 
+   LiteralValue(..),
+   Token(..),
    ScanError,
    scan
    ) where
@@ -33,9 +33,9 @@ data TokenType = TTIndent Int
 -- liternal value type
 data LiteralValue = LTString String
                   | LTBytes String
-                  | LTInteger Integer
-                  | LTFloat Double
-                  | LTImaginary Double Int
+                  | LTInteger String
+                  | LTFloat String
+                  | LTImaginary String String
                   deriving (Eq, Show)
 
 -- token
@@ -203,8 +203,7 @@ numberToken =
    try ( do
       digits <- many1 digit
       notFollowedBy letter
-      let n = read digits :: Integer
-      return $ TTLiteral $ LTInteger n
+      return $ TTLiteral $ LTInteger digits
       )
 
 -- new line token
