@@ -11,6 +11,7 @@ import Text.Parsec
 import Text.Parsec.Prim
 import Text.Parsec.Char
 import Text.Parsec.String
+import Text.Parsec.Pos
 import qualified Data.Set as Set
 import Data.List
 import Text.Parsec.Error
@@ -38,12 +39,16 @@ data LiteralValue = LTString String
                   | LTImaginary String String
                   deriving (Eq, Show)
 
+-- source position
+newtype SPos = SPos (Int,Int)
+               deriving (Eq, Show)
+
 -- token
-data Token = Token TokenType (Int,Int)
+data Token = Token TokenType (SPos,SPos)
              deriving (Eq, Show)
 
 -- scan error object
-data ScanError = ScanError String (Int,Int)
+data ScanError = ScanError String SPos
                  deriving (Eq)
 
 instance Show ScanError where
@@ -65,8 +70,7 @@ scan input = do
    case tokenResult of
       Right tokens -> indentDedent . joinLines . removeBlankLines $ tokens
       Left err     -> let message = show err
-                          p@(l,c) = let pos = errorPos err in (sourceLine pos, sourceColumn pos)
-                      in Left $ ScanError message p
+                      in Left $ ScanError message (toSPos $ errorPos err)
    where tokenResult = tokenize input
 
 
@@ -106,45 +110,57 @@ removeBlankLines tokens = case (removeIt tokens) of
 indentDedent :: [Token] -> Either ScanError [Token]
 indentDedent = xdentIt [1] True
    where xdentIt :: [Int] -> Bool -> [Token] -> Either ScanError [Token]
-         xdentIt st@(p:ps) True  (tok@(Token _ pos@(l,c)) : rest)         | c > p     = xdentIt (c:st) False rest >>= (\rest -> return $ indent pos : tok : rest)
-                                                                          | c < p     = dedent st pos (tok:rest)
-                                                                          | otherwise = xdentIt st False rest >>= (\rest -> return $ tok : rest)
-         xdentIt st@(p:ps) False (tok@(Token TTNewline pos@(l,c)) : rest) | null rest = dedent st pos [] >>= (\rest -> return $ tok : rest)
-                                                                          | otherwise = xdentIt st True rest >>= (\rest -> return $ tok : rest)
-         xdentIt st        False (tok@(Token _ pos@(l,c)) : rest)                     = xdentIt st False rest >>= (\rest -> return $ tok : rest)
-         xdentIt _         _     []                                                   = return []
-         indent (l,c) = Token (TTIndent c) (l,c)
+         xdentIt st@(p:ps) True  (tok@(Token _ (SPos pos@(l,c), _)) : rest)         | c > p     = xdentIt (c:st) False rest >>= (\rest -> return $ indent pos : tok : rest)
+                                                                                    | c < p     = dedent st pos (tok:rest)
+                                                                                    | otherwise = xdentIt st False rest >>= (\rest -> return $ tok : rest)
+         xdentIt st@(p:ps) False (tok@(Token TTNewline (SPos pos@(l,c), _)) : rest) | null rest = dedent st pos [] >>= (\rest -> return $ tok : rest)
+                                                                                    | otherwise = xdentIt st True rest >>= (\rest -> return $ tok : rest)
+         xdentIt st        False (tok@(Token _ (SPos pos@(l,c), _)) : rest)                     = xdentIt st False rest >>= (\rest -> return $ tok : rest)
+         xdentIt _         _     []                                                             = return []
+         indent (l,c) = Token (TTIndent c) (SPos(l,c), SPos(l,c))
+         --dedent :: [Int] -> (Int,Int) -> [Token] -> Either ScanError [Token]
          dedent st@(p:ps) pos@(l,c) rest = 
                if null rest || c `elem` st
                   then doDedent st pos rest
-                  else throwError (ScanError ("unindent does not match any outer indentation level at " ++ (show pos)) pos)
-            where doDedent st@(p:ps) pos@(l,c) rest | c < p     = dedent ps pos rest >>= (\rest -> return $ (Token (TTDedent p) pos) : rest)
+                  else throwError (ScanError ("unindent does not match any outer indentation level at " ++ (show pos)) 
+                                             $ SPos pos)
+            where doDedent st@(p:ps) pos@(l,c) rest | c < p     = dedent ps pos rest >>= (\rest -> return $ (Token (TTDedent p) (SPos pos, SPos pos)) : rest)
                                                     | otherwise = if null rest
-                                                          then return $ map (\p' -> (Token (TTDedent p') pos)) $ init st
+                                                          then return $ map (\p' -> (Token (TTDedent p') (SPos pos, SPos pos))) $ init st
                                                           else xdentIt st False rest
 
 -- root grammar of python tokens
 pythonTokens :: Parser Token
 pythonTokens = do
    pos <- getPosition
-   tokenType <- lexeme True keywordToken <|> 
-                lexeme False identifierToken <|> 
-                lexeme False newLine <|> 
-                lexeme False operatorToken <|>
-                lexeme False delimeterToken <|>
-                lexeme False numberToken <|> 
-                lexeme False stringToken <|>
-                commentToken <|>
-                lineJoinerToken
-   return (Token tokenType (sourceLine pos, sourceColumn pos))
+   (tokenType, pos') <- lexeme False keywordToken <|> 
+                        lexeme False identifierToken <|> 
+                        lexeme False newLine <|> 
+                        lexeme False operatorToken <|>
+                        lexeme False delimeterToken <|>
+                        lexeme False numberToken <|> 
+                        lexeme False stringToken <|>
+                        getTokAndPos commentToken  <|>
+                        getTokAndPos lineJoinerToken
+   return (Token tokenType (toSPos pos, toSPos pos'))
 
--- make a parser to eat up following space
-lexeme :: Bool -> Parser TokenType -> Parser TokenType
+-- make a parser to eat up following space and return tokent type and original
+-- ending position prior the eaten space
+lexeme :: Bool -> Parser TokenType -> Parser (TokenType, SourcePos)
 lexeme sp p = do
    tokenType <- p
+   pos <- getPosition
    let spfunc = if sp then many1 else many
    spfunc (char ' ') <|> (eof >> return "")
-   return tokenType
+   return (tokenType, pos)
+
+
+-- utility to get token type and pos
+getTokAndPos :: Parser TokenType -> Parser (TokenType, SourcePos)
+getTokAndPos p = do
+   tokenType <- p
+   pos <- getPosition
+   return (tokenType, pos)
 
 -- identifier token
 identifierToken :: Parser TokenType
@@ -260,4 +276,11 @@ delimeters = [
 delimetersSet = Set.fromList delimeters
 
 delimeterChars = Set.toList $ Set.fromList $ concat delimeters
+
+-- utility to convert between SourcePosition and our SPos
+toSPos :: SourcePos -> SPos
+toSPos p = SPos (sourceLine p, sourceColumn p)
+
+fromSPos :: SPos -> SourcePos
+fromSPos (SPos (l,c)) = newPos "" l c
 
