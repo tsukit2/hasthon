@@ -3,7 +3,10 @@ module Hasthon.Scanner (
    LiteralValue(..),
    Token(..),
    ScanError,
-   scan
+   scan,
+   SPos(..),
+   toSPos,
+   fromSPos
    ) where
 
 
@@ -41,11 +44,17 @@ data LiteralValue = LTString String
 
 -- source position
 newtype SPos = SPos (Int,Int)
-               deriving (Eq, Show)
+               deriving (Eq)
+
+instance Show SPos where
+   show (SPos p@(l,c)) = show p
 
 -- token
 data Token = Token TokenType (SPos,SPos)
-             deriving (Eq, Show)
+             deriving (Eq)
+
+instance Show Token where
+   show (Token tt (p,p')) = show tt ++ " " ++ (show p ++ "-" ++ show p')
 
 -- scan error object
 data ScanError = ScanError String SPos
@@ -110,13 +119,17 @@ removeBlankLines tokens = case (removeIt tokens) of
 indentDedent :: [Token] -> Either ScanError [Token]
 indentDedent = xdentIt [1] True
    where xdentIt :: [Int] -> Bool -> [Token] -> Either ScanError [Token]
-         xdentIt st@(p:ps) True  (tok@(Token _ (SPos pos@(l,c), _)) : rest)         | c > p     = xdentIt (c:st) False rest >>= (\rest -> return $ indent pos : tok : rest)
-                                                                                    | c < p     = dedent st pos (tok:rest)
-                                                                                    | otherwise = xdentIt st False rest >>= (\rest -> return $ tok : rest)
-         xdentIt st@(p:ps) False (tok@(Token TTNewline (SPos pos@(l,c), _)) : rest) | null rest = dedent st pos [] >>= (\rest -> return $ tok : rest)
-                                                                                    | otherwise = xdentIt st True rest >>= (\rest -> return $ tok : rest)
-         xdentIt st        False (tok@(Token _ (SPos pos@(l,c), _)) : rest)                     = xdentIt st False rest >>= (\rest -> return $ tok : rest)
-         xdentIt _         _     []                                                             = return []
+         xdentIt st@(p:ps) True  (tok@(Token _ (SPos pos@(l,c), _)) : rest)         
+            | c > p     = xdentIt (c:st) False rest >>= (\rest -> return $ indent pos : tok : rest)
+            | c < p     = dedent st pos (tok:rest)
+            | otherwise = xdentIt st False rest >>= (\rest -> return $ tok : rest)
+         xdentIt st@(p:ps) False (tok@(Token TTNewline (SPos pos@(l,c), _)) : rest) 
+            | null rest = dedent st pos [] >>= (\rest -> return $ tok : rest)
+            | otherwise = xdentIt st True rest >>= (\rest -> return $ tok : rest)
+         xdentIt st        False (tok@(Token _ (SPos pos@(l,c), _)) : rest)                     
+            = xdentIt st False rest >>= (\rest -> return $ tok : rest)
+         xdentIt _         _     []                                                             
+            = return []
          indent (l,c) = Token (TTIndent c) (SPos(l,c), SPos(l,c))
          --dedent :: [Int] -> (Int,Int) -> [Token] -> Either ScanError [Token]
          dedent st@(p:ps) pos@(l,c) rest = 
@@ -124,10 +137,11 @@ indentDedent = xdentIt [1] True
                   then doDedent st pos rest
                   else throwError (ScanError ("unindent does not match any outer indentation level at " ++ (show pos)) 
                                              $ SPos pos)
-            where doDedent st@(p:ps) pos@(l,c) rest | c < p     = dedent ps pos rest >>= (\rest -> return $ (Token (TTDedent p) (SPos pos, SPos pos)) : rest)
-                                                    | otherwise = if null rest
-                                                          then return $ map (\p' -> (Token (TTDedent p') (SPos pos, SPos pos))) $ init st
-                                                          else xdentIt st False rest
+            where doDedent st@(p:ps) pos@(l,c) rest 
+                     | c < p     = dedent ps pos rest >>= (\rest -> return $ (Token (TTDedent p) (SPos pos, SPos pos)) : rest)
+                     | otherwise = if null rest
+                           then return $ map (\p' -> (Token (TTDedent p') (SPos pos, SPos pos))) $ init st
+                           else xdentIt st False rest
 
 -- root grammar of python tokens
 pythonTokens :: Parser Token
