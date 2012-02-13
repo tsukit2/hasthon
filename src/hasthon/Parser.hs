@@ -96,16 +96,17 @@ smallStmt = do
 
 
 -- utility function to help parsing token
-tok :: Token -> Parser Token
-tok t@(Token typ _) = tokenPrim showTok nextPos testTok
-   where showTok t'                 = show t'
-         nextPos p t' ts            = incSourceColumn p 1
-         testTok t'@(Token typ' _)  = if tokcmp typ typ' then Just t' else Nothing
+tok :: Token -> String -> Parser Token
+tok t@(Token typ _) msg = tokenPrim showTok nextPos testTok <?> msg
+   where showTok t'                                    = show t'
+         nextPos _ _               ((Token _ (p,_)):_) = fromSPos p
+         nextPos _ (Token _ (_,p)) []                  = fromSPos p
+         testTok t'@(Token typ' _)                     = if tokcmp typ typ' then Just t' else Nothing
 
-toks :: [Token] -> Parser [Token]
-toks = tokens showTok nextPos 
-   where showTok ts'   = show ts'
-         nextPos p ts' = incSourceColumn p $ length ts'
+-- toks :: [Token] -> Parser [Token]
+-- toks = tokens showTok nextPos 
+--    where showTok ts'   = show ts'
+--          nextPos p ts' = incSourceColumn p $ length ts'
 
 -- utility to help comparing token type but not its actual value for some type
 tokcmp (TTIndent      _)               (TTIndent _)                       = True
@@ -124,21 +125,21 @@ tokcmp t1                           t2                                    = t1 =
 
 -- utility to make a token only for the part we care about
 mktok :: TokenType -> Token
-mktok tt = (Token tt (0,0))
+mktok tt = (Token tt (SPos (0,0), SPos (0,0)))
 
 -- various token parsers
-pINDENT        = tok $ mktok $ TTIndent 0
-pDEDENT        = tok $ mktok $ TTDedent 0
-pNEWLINE       = tok $ mktok TTNewline
-pKW s          = tok $ mktok $ TTKeyword s
-pID            = tok $ mktok $ TTIdentifier ""
-pLTSTR         = tok $ mktok $ TTLiteral $ LTString ""
-pLTBYTES       = tok $ mktok $ TTLiteral $ LTBytes ""
-pLTINTEGER     = tok $ mktok $ TTLiteral $ LTInteger ""
-pLTFLOAT       = tok $ mktok $ TTLiteral $ LTFloat ""
-pLTIMAGINARY   = tok $ mktok $ TTLiteral $ LTImaginary "" ""
-pOP s          = tok $ mktok $ TTOperator s
-pDEL s         = tok $ mktok $ TTDelimeter s
+pINDENT        = tok (mktok $ TTIndent 0)                      "INDENT"
+pDEDENT        = tok (mktok $ TTDedent 0)                      "DEDENT"
+pNEWLINE       = tok (mktok TTNewline)                         "NEWLINE"
+pKW s          = tok (mktok $ TTKeyword s)                     $ "Keyword \"" ++ s ++ "\""
+pID            = tok (mktok $ TTIdentifier "")                 "Identifier"
+pLTSTR         = tok (mktok $ TTLiteral $ LTString "")         "String Literal"
+pLTBYTES       = tok (mktok $ TTLiteral $ LTBytes "")          "Byte Literal"
+pLTINTEGER     = tok (mktok $ TTLiteral $ LTInteger "")        "Integer Literal"
+pLTFLOAT       = tok (mktok $ TTLiteral $ LTFloat "")          "Float Literal"
+pLTIMAGINARY   = tok (mktok $ TTLiteral $ LTImaginary "" "")   "Imaginary Literal"
+pOP s          = tok (mktok $ TTOperator s)                    $ "Operator \"" ++ s ++ "\""
+pDEL s         = tok (mktok $ TTDelimeter s)                   $ "Delimeter \"" ++ s ++ "\""
 
 
 
