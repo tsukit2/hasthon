@@ -19,6 +19,7 @@ import qualified Data.Set as Set
 import Data.List
 import Text.Parsec.Error
 import Control.Monad.Error
+import Control.Monad
 
 -- token type
 data TokenType = TTIndent Int
@@ -87,7 +88,9 @@ scan input = do
 tokenize :: String -> Either ParseError [Token]
 tokenize = parse (do tokens <- many pythonTokens
                      eof
-                     return tokens) ""
+                     endpos <- getPosition >>= return . toSPos
+                     let endtok = Token TTNewline (endpos, endpos)
+                     return (tokens ++ [endtok])) ""
 
 
 -- join lines
