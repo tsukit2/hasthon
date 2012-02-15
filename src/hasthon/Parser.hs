@@ -6,7 +6,8 @@ import qualified Text.Parsec.Error as PE
 import Hasthon.Scanner
  
 -- abstract syntax tree
-data ABSTree = ABSTree
+data ABSTree = ABSTree String
+             | Stmts [ABSTree]
                deriving (Eq, Show)
 
 -- parse error object
@@ -32,6 +33,15 @@ test mode input = do
       Right abs   -> (putStrLn . show) abs
       Left err    -> print err
 
+
+
+--test :: ParseMode -> String -> IO ()
+--test mode input = do
+--  case (Hasthon.Scanner.scan input) of
+--      Right tokens   -> mapM_ (putStrLn . show) tokens
+--      Left err       -> print err
+--
+
 -- parse start here
 parse :: ParseMode -> String -> Either Hasthon.Parser.ParseError ABSTree
 parse mode input = 
@@ -49,23 +59,24 @@ parse mode input =
 singleInputGrammar :: Parser ABSTree
 singleInputGrammar = do 
    fail ""
-   return ABSTree
+   return $ ABSTree "singleInputGrammar"
 
 -- file input grammar
 fileInputGrammar :: Parser ABSTree
 fileInputGrammar = do 
-   many stmt
-   return ABSTree
+   stmts <- many stmt
+   return $ if null stmts then ABSTree "fileInputGrammar" else head stmts
 
 -- eval input grammar
 evalInputGrammar :: Parser ABSTree
 evalInputGrammar = do 
    fail ""
-   return ABSTree
+   return $ ABSTree "evalInputGrammar"
 
 -- statement
 stmt :: Parser ABSTree
-stmt = simpleStmt <|> compoundStmt
+stmt = do 
+   simpleStmt <|> compoundStmt
 
 -- simple statement
 simpleStmt :: Parser ABSTree
@@ -74,25 +85,68 @@ simpleStmt = do
    otherStmts <- many (pDEL ";" >> smallStmt >>= return)
    optional $ pDEL ";"
    pNEWLINE
-   return ABSTree
+   return $ Stmts (firstStmt : otherStmts)
 
 -- compound statement statement
 compoundStmt :: Parser ABSTree
 compoundStmt = do
    fail ""
-   return ABSTree
+   return $ ABSTree "compoundStmt"
 
 -- small statement
 smallStmt :: Parser ABSTree
-smallStmt = do
-   pKW "for"
-   return ABSTree
+smallStmt = 
+   exprStmt <|> delStmt <|> passStmt <|> flowStmt <|>
+      importStmt <|> globalStmt <|> nonlocalStmt <|> assertStmt
 
 
+-- expresion statement
+exprStmt :: Parser ABSTree
+exprStmt = do
+   fail ""
+   return $ ABSTree "exprStmt"
+   
+-- delete statement
+delStmt :: Parser ABSTree
+delStmt = do
+   fail ""
+   return $ ABSTree "delStmt"
+   
+-- pass statement
+passStmt :: Parser ABSTree
+passStmt = do
+   pKW "pass"
+   return $ ABSTree "passStmt"
+   
+-- flow statement
+flowStmt :: Parser ABSTree
+flowStmt = do
+   fail ""
+   return $ ABSTree "flowStmt"
 
-
-
-
+-- import statement
+importStmt :: Parser ABSTree
+importStmt = do
+   fail ""
+   return $ ABSTree "importStmt"
+   
+-- global statement
+globalStmt :: Parser ABSTree
+globalStmt = do
+   fail ""
+   return $ ABSTree "globalStmt"
+   
+-- non-local statement
+nonlocalStmt :: Parser ABSTree
+nonlocalStmt = do
+   fail ""
+   return $ ABSTree "nonlocalStmt"
+   
+-- assert statement
+assertStmt :: Parser ABSTree
+assertStmt = do
+   fail ""
+   return $ ABSTree "assertStmt"
 
 
 -- utility function to help parsing token
