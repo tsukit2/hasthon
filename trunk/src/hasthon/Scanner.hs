@@ -194,7 +194,9 @@ identifierToken = do
 
 -- keyword token
 keywordToken :: Parser TokenType
-keywordToken = setBasedToken (many letter) keywordsSet TTKeyword "not a keyword"
+keywordToken = setBasedToken (do kw <- many letter
+                                 notFollowedBy alphaNum
+                                 return kw) keywordsSet TTKeyword "not a keyword"
 
 -- operator token
 operatorToken :: Parser TokenType
