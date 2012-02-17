@@ -7,8 +7,25 @@ import Hasthon.Scanner
  
 -- abstract syntax tree
 data ABSTree = ABSTree String
+             | ABSStmt Statement
              | Stmts [ABSTree]
                deriving (Eq, Show)
+
+
+-- statement
+data Statement = STPass 
+               | STBreak
+               | STContinue
+               | STReturn (Maybe Expression)
+               | STRaise (Maybe Expression)
+               | STYield (Maybe Expression)
+               | STGlobal [Token]
+               | STNonlocal [Token]
+                 deriving (Eq, Show)
+
+-- expresion
+data Expression = EXString String
+                  deriving (Eq, Show)
 
 -- parse error object
 data ParseError = ScannerError ScanError
@@ -116,13 +133,11 @@ delStmt = do
 passStmt :: Parser ABSTree
 passStmt = do
    pKW "pass"
-   return $ ABSTree "passStmt"
+   return $ ABSStmt STPass
    
 -- flow statement
 flowStmt :: Parser ABSTree
-flowStmt = do
-   fail ""
-   return $ ABSTree "flowStmt"
+flowStmt = breakStmt <|> continueStmt <|> returnStmt <|> raiseStmt <|> yieldStmt
 
 -- import statement
 importStmt :: Parser ABSTree
@@ -133,20 +148,53 @@ importStmt = do
 -- global statement
 globalStmt :: Parser ABSTree
 globalStmt = do
-   fail ""
-   return $ ABSTree "globalStmt"
+   pKW "global"
+   names <- pID `sepBy` pDEL ","
+   return $ ABSStmt $ STGlobal names
    
 -- non-local statement
 nonlocalStmt :: Parser ABSTree
 nonlocalStmt = do
-   fail ""
-   return $ ABSTree "nonlocalStmt"
+   pKW "nonlocal"
+   names <- pID `sepBy` pDEL ","
+   return $ ABSStmt $ STNonlocal names
    
 -- assert statement
 assertStmt :: Parser ABSTree
 assertStmt = do
    fail ""
    return $ ABSTree "assertStmt"
+
+-- break statment
+breakStmt :: Parser ABSTree
+breakStmt = do
+   pKW "break"
+   return $ ABSStmt STBreak
+
+-- continue statment
+continueStmt :: Parser ABSTree
+continueStmt = do
+   pKW "continue"
+   return $ ABSStmt STContinue
+
+-- return statement
+returnStmt :: Parser ABSTree
+returnStmt = do
+   pKW "return"
+   return $ ABSStmt $ STReturn Nothing
+
+-- raise statement
+raiseStmt :: Parser ABSTree
+raiseStmt = do
+   pKW "raise" 
+   return $ ABSStmt $ STRaise Nothing
+
+-- yield statement
+yieldStmt :: Parser ABSTree
+yieldStmt = do
+   pKW "yield"
+   return $ ABSStmt $ STYield Nothing
+
 
 
 -- utility function to help parsing token
