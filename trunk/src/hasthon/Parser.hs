@@ -16,8 +16,8 @@ data ABSTree = ABSTree String
 data Statement = STPass 
                | STBreak
                | STContinue
-               | STReturn (Maybe Expression)
-               | STRaise (Maybe Expression)
+               | STReturn (Maybe [Expression])
+               | STRaise (Maybe (Expression, Maybe Expression))
                | STYield (Maybe Expression)
                | STGlobal [Token]
                | STNonlocal [Token]
@@ -25,6 +25,11 @@ data Statement = STPass
 
 -- expresion
 data Expression = EXString String
+                | EXTest Expression (Maybe (Expression, Expression))
+                | EXOrTest [Expression]
+                | EXAndTest [Expression]
+                | EXNotTest Expression
+                | EXComparison Expression [(Token, Expression)]
                   deriving (Eq, Show)
 
 -- parse error object
@@ -149,14 +154,14 @@ importStmt = do
 globalStmt :: Parser ABSTree
 globalStmt = do
    pKW "global"
-   names <- pID `sepBy` pDEL ","
+   names <- pID `sepBy1` pDEL ","
    return $ ABSStmt $ STGlobal names
    
 -- non-local statement
 nonlocalStmt :: Parser ABSTree
 nonlocalStmt = do
    pKW "nonlocal"
-   names <- pID `sepBy` pDEL ","
+   names <- pID `sepBy1` pDEL ","
    return $ ABSStmt $ STNonlocal names
    
 -- assert statement
@@ -181,20 +186,79 @@ continueStmt = do
 returnStmt :: Parser ABSTree
 returnStmt = do
    pKW "return"
-   return $ ABSStmt $ STReturn Nothing
+   rTestlist <- optionMaybe pTestlist
+   return $ ABSStmt $ STReturn rTestlist
 
 -- raise statement
 raiseStmt :: Parser ABSTree
 raiseStmt = do
    pKW "raise" 
-   return $ ABSStmt $ STRaise Nothing
+   rTest <- optionMaybe (do rTest' <- pTest
+                            rFrom' <- optionalMaybe (pKW "from" >> pTest)
+                            return (rTest', rFrom'))
+   return $ ABSStmt $ STRaise rTest
 
 -- yield statement
 yieldStmt :: Parser ABSTree
-yieldStmt = do
+yieldStmt = yieldExpr
+
+-- yield expression
+yieldExpr :: Parser ABSTree
+yieldExpr = do
    pKW "yield"
    return $ ABSStmt $ STYield Nothing
 
+
+-- test list epression
+pTestlist :: Parser [Expression]
+pTestlist = do
+   rTests <- pTest `sepBy1` pDEL ","
+   optional $ pDEL ","
+   return rTests
+
+-- test expression
+pTest :: Parser Expression
+pTest = do
+   (rOrTest <- pOrTest
+    rIfCond <- optionalMaybe (do pKW "if" 
+                                rCond <- pOrTest
+                                pKW "else"
+                                rTest <- pTest
+
+                                return (rCond, rTest))
+    return $ EXTestExpr rOrTest rIfcond
+   ) <|> pLambdef 
+
+-- or-test expression
+pOrTest :: Parser Expression
+pOrTest = do
+   rAndTests <- pAndTest `sepBy1` pKW "or"
+   return $ EXOrTest rAndTests
+
+-- and-test expression
+pAndTest :: Parser Expression
+pAndTest = do
+   rNotTests <- pNotTest `sepBy1` pKW "and"
+   return $ EXAndtest rNotTests
+
+-- not-test expression
+pNotTest :: Parser Expression
+pNotTest = do
+   rNotTest <- (pKW "not" >> pNotTest) <|> pComparison
+   return $ EXNotTest rNotTest
+
+-- comparision expression
+pComparison :: Parser Expression
+pComparison = do
+   rStarExpr <- pStarExpr 
+   rCompElements <- many (do rCompOp <- pCompOp
+                             rStarExpr' <- pStarExpr
+                             return (rCompOp, rStarExpr'))
+   return $ EXComparison rStarExpr rCompElements
+
+-- comparison operator 
+pCompOp :: Parser Token
+pCompOp = 
 
 
 -- utility function to help parsing token
