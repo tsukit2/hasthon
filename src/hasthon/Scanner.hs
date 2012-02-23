@@ -200,22 +200,11 @@ keywordToken = setBasedToken (do kw <- many letter
 
 -- operator token
 operatorToken :: Parser TokenType
-operatorToken = setBasedToken (many (oneOf operatorChars)) operatorsSet TTOperator "not an operator"
+operatorToken = strBasedToken operators TTOperator "not an operator"
 
 -- delimeter token
 delimeterToken :: Parser TokenType
-delimeterToken = setBasedToken (many (oneOf delimeterChars)) delimetersSet TTDelimeter "not a delimeter"
-
--- set-based token type (utility to help create token based on set
-setBasedToken :: Parser String -> Set.Set String -> (String -> TokenType) -> String -> Parser TokenType
-setBasedToken p s f em = do
-   try (
-      do
-         tokstr <- p
-         if tokstr `Set.member` s 
-            then return $ f tokstr
-            else fail em
-       )
+delimeterToken = strBasedToken delimeters TTDelimeter "not a delimeter"
 
 -- string token
 stringToken :: Parser TokenType
@@ -302,4 +291,23 @@ toSPos p = SPos (sourceLine p, sourceColumn p)
 
 fromSPos :: SPos -> SourcePos
 fromSPos (SPos (l,c)) = newPos "" l c
+
+-- set-based token type (utility to help create token based on set
+setBasedToken :: Parser String -> Set.Set String -> (String -> TokenType) -> String -> Parser TokenType
+setBasedToken p s f em = do
+   try (
+      do
+         tokstr <- p
+         if tokstr `Set.member` s 
+            then return $ f tokstr
+            else fail em
+       )
+
+-- string-based token type (utility function to make choice parser for longest string first)
+strBasedToken :: [String] -> (String -> TokenType) -> String -> Parser TokenType
+strBasedToken strs tokfunc errmsg = 
+   ((choice $ map (try . string) sortedStrs) <?> errmsg) >>= (return . tokfunc)
+   where comp (l,_) (l',_) =  compare l' l
+         sortedStrs = snd $ unzip $ sortBy comp strsWithLen
+         strsWithLen = zip (map length strs) strs
 
