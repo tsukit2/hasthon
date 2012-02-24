@@ -29,7 +29,11 @@ data Expression = EXString String
                 | EXOrTest [Expression]
                 | EXAndTest [Expression]
                 | EXNotTest Expression
-                | EXComparison Expression [(Token, Expression)]
+                | EXComparison Expression [([Token], Expression)]
+                | ExStarExpr Expression
+                | EXOrExpr [Expression]
+                | EXXorExpr [Expression]
+                | EXAndExpr [Expression]
                   deriving (Eq, Show)
 
 -- parse error object
@@ -259,6 +263,39 @@ pComparison = do
 -- comparison operator 
 pCompOp :: Parser Token
 pCompOp = 
+   pNotInOp <|> pIsNotOp <|> (choice pSingleCompOps >>= (o -> return [o]))
+   where pSingleCompOps = map pOP [ "<", ">", "==", ">=", "<=", {-"<>"-}, "!=" ] ++ map pKW [ "in", "is" ]
+         pNotInOp = pKW "not" >>= (\a -> pKW "in")  >>= (\b -> return [a,b])
+         pIsNotOp = pKW "is"  >>= (\a -> pKW "not") >>= (\b -> return [a,b])
+
+-- star expression
+pStarExpr :: Parser Expression
+   rStar <- optionalMaybe $ pOP "*"
+   case rStar of
+      Just _   -> pExpression >>= (exp -> return $ ExStarExpr exp)
+      Nothing  -> pExpression 
+   
+-- expression
+pExpression :: Parser Expression
+pExpression =  do
+   rOrExprs <- pXorExpr `sepBy1` pOP "|"
+   return EXOrExpr rOrExprs
+
+-- xor expression
+pXorExpr :: Parser Expression
+pXorExpr = do
+   rXorExprs <- pAndExpr `sepBy1` pOP "^"
+   return EXXorExpr rXorExprs
+
+-- and expression
+pAndExpr :: Parser Expression
+pAndExpr = do
+   rAndExprs <- pShiftExpr 'sepBy1' pOP "&"
+   return EXAndExpr rAndExprs
+
+
+
+
 
 
 -- utility function to help parsing token
