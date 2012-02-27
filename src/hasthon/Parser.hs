@@ -26,14 +26,32 @@ data Statement = STPass
 -- expresion
 data Expression = EXString String
                 | EXTest Expression (Maybe (Expression, Expression))
-                | EXOrTest [Expression]
-                | EXAndTest [Expression]
+                | EXOrTest Expression Expression
+                | EXAndTest Expression Expression
                 | EXNotTest Expression
-                | EXComparison Expression [([Token], Expression)]
-                | ExStarExpr Expression
-                | EXOrExpr [Expression]
-                | EXXorExpr [Expression]
-                | EXAndExpr [Expression]
+                | EXLessThan Expression Expression
+                | EXGreaterThan Expression Expression 
+                | EXEqual Expression Expression 
+                | EXGreaterThanOrEqual Expression Expression
+                | EXLessThanOrEqual Expression Expression
+                | EXNotEqual Expression Expression
+                | EXIn Expression Expression
+                | EXNotIn Expression Expression
+                | EXIs Expression Expression
+                | EXIsNot Expression Expression
+                | EXStar Expression
+                | EXOr Expression Expression
+                | EXXor Expression Expression
+                | EXAnd Expression Expression
+                | EXLeftShift Expression Expression
+                | EXRightShift Expression Expression
+                | EXPlus Expression Expression
+                | EXMinus Expression Expression
+                | EXMultiply Expression Expression
+                | EXDivide Expression Expression
+                | EXReminder Expression Expression
+                | EXIntDivide Expression Expression
+                | EXFactor Token
                   deriving (Eq, Show)
 
 -- parse error object
@@ -198,7 +216,7 @@ raiseStmt :: Parser ABSTree
 raiseStmt = do
    pKW "raise" 
    rTest <- optionMaybe (do rTest' <- pTest
-                            rFrom' <- optionalMaybe (pKW "from" >> pTest)
+                            rFrom' <- optionMaybe (pKW "from" >> pTest)
                             return (rTest', rFrom'))
    return $ ABSStmt $ STRaise rTest
 
@@ -222,80 +240,111 @@ pTestlist = do
 
 -- test expression
 pTest :: Parser Expression
-pTest = do
-   (rOrTest <- pOrTest
-    rIfCond <- optionalMaybe (do pKW "if" 
-                                rCond <- pOrTest
-                                pKW "else"
-                                rTest <- pTest
-
-                                return (rCond, rTest))
-    return $ EXTestExpr rOrTest rIfcond
+pTest = 
+   (do rOrTest <- pOrTest
+       rIfCond <- optionMaybe (do pKW "if" 
+                                  rCond <- pOrTest
+                                  pKW "else"
+                                  rTest <- pTest
+                                  return (rCond, rTest))
+       return $ EXTest rOrTest rIfCond
    ) <|> pLambdef 
 
 -- or-test expression
 pOrTest :: Parser Expression
-pOrTest = do
-   rAndTests <- pAndTest `sepBy1` pKW "or"
-   return $ EXOrTest rAndTests
+pOrTest = opExprParser pAndTest [ (pKW "or", flip EXOrTest) ]
 
 -- and-test expression
 pAndTest :: Parser Expression
-pAndTest = do
-   rNotTests <- pNotTest `sepBy1` pKW "and"
-   return $ EXAndtest rNotTests
+pAndTest = opExprParser pNotTest [ (pKW "and", flip EXAndTest) ]
 
 -- not-test expression
 pNotTest :: Parser Expression
-pNotTest = do
-   rNotTest <- (pKW "not" >> pNotTest) <|> pComparison
-   return $ EXNotTest rNotTest
+pNotTest = (pKW "not" >> pNotTest >>= (\ex -> return $ EXNotTest ex)) <|> pComparison
 
 -- comparision expression
 pComparison :: Parser Expression
-pComparison = do
-   rStarExpr <- pStarExpr 
-   rCompElements <- many (do rCompOp <- pCompOp
-                             rStarExpr' <- pStarExpr
-                             return (rCompOp, rStarExpr'))
-   return $ EXComparison rStarExpr rCompElements
-
--- comparison operator 
-pCompOp :: Parser Token
-pCompOp = 
-   pNotInOp <|> pIsNotOp <|> (choice pSingleCompOps >>= (o -> return [o]))
-   where pSingleCompOps = map pOP [ "<", ">", "==", ">=", "<=", {-"<>"-}, "!=" ] ++ map pKW [ "in", "is" ]
-         pNotInOp = pKW "not" >>= (\a -> pKW "in")  >>= (\b -> return [a,b])
-         pIsNotOp = pKW "is"  >>= (\a -> pKW "not") >>= (\b -> return [a,b])
+pComparison = opExprParser pStarExpr [
+   (pOP "<"               , flip EXLessThan),
+   (pOP ">"               , flip EXGreaterThan),
+   (pOP "=="              , flip EXEqual),
+   (pOP ">="              , flip EXGreaterThanOrEqual),
+   (pOP "<="              , flip EXLessThanOrEqual),
+   (pOP "!="              , flip EXNotEqual),
+   (pKW "in"              , flip EXIn),
+   (pKW "not" >> pKW "in" , flip EXNotIn),
+   (pKW "is"              , flip EXIs),
+   (pKW "is" >> pKW "not" , flip EXIsNot)
+   ]
 
 -- star expression
 pStarExpr :: Parser Expression
-   rStar <- optionalMaybe $ pOP "*"
+pStarExpr = do
+   rStar <- optionMaybe $ pOP "*"
    case rStar of
-      Just _   -> pExpression >>= (exp -> return $ ExStarExpr exp)
+      Just _   -> pExpression >>= (\exp -> return $ EXStar exp)
       Nothing  -> pExpression 
    
 -- expression
 pExpression :: Parser Expression
-pExpression =  do
-   rOrExprs <- pXorExpr `sepBy1` pOP "|"
-   return EXOrExpr rOrExprs
+pExpression = opExprParser pXorExpr [ (pOP "|", flip EXOr) ]
 
 -- xor expression
 pXorExpr :: Parser Expression
-pXorExpr = do
-   rXorExprs <- pAndExpr `sepBy1` pOP "^"
-   return EXXorExpr rXorExprs
+pXorExpr = opExprParser pAndExpr [ (pOP "^", flip EXXor) ]
 
 -- and expression
 pAndExpr :: Parser Expression
-pAndExpr = do
-   rAndExprs <- pShiftExpr 'sepBy1' pOP "&"
-   return EXAndExpr rAndExprs
+pAndExpr = opExprParser pShiftExpr [ (pOP "&", flip EXAnd) ]
 
 
+-- shift expression
+pShiftExpr :: Parser Expression
+pShiftExpr = opExprParser pArithExpr [
+   (pOP "<<", flip EXLeftShift),
+   (pOP ">>", flip EXRightShift)
+   ]
+
+-- arithmatic expression
+pArithExpr :: Parser Expression
+pArithExpr = opExprParser pTerm [
+   (pOP "+", flip EXPlus),
+   (pOP "-", flip EXMinus)
+   ]
+
+-- term expression
+pTerm :: Parser Expression
+pTerm = opExprParser pFactor [
+   (pOP "*" , flip EXMultiply),
+   (pOP "/" , flip EXDivide),
+   (pOP "%" , flip EXReminder),
+   (pOP "//", flip EXIntDivide)
+   ]
 
 
+-- utility function to parse repeated expression of different operators but same precedence
+opExprParser :: (Parser Expression) -> [((Parser Token), (Expression -> Expression -> Expression))] -> Parser Expression
+opExprParser p ops = do
+   rP <- p
+   rest <- optionMaybe $ choice optionalParsers
+   case rest of
+      Nothing        ->    return rP
+      Just f         ->    return $ f rP
+   where optionalParsers :: [Parser (Expression -> Expression)]
+         optionalParsers = map toMany1 ops
+         toMany1 :: (Parser Token, (Expression -> Expression -> Expression)) -> Parser (Expression -> Expression)
+         toMany1 (op,f)  = (many1 $ op >> p) >>= (\ex -> return (\x -> foldr f x ex))
+
+-- factor expression
+pFactor :: Parser Expression
+pFactor = do
+   tok <- pLTINTEGER <|> pID
+   return $ EXFactor tok
+   
+-- lambda definition
+pLambdef :: Parser Expression
+pLambdef = do
+   fail "not supported yet"
 
 
 -- utility function to help parsing token
