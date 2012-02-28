@@ -25,7 +25,7 @@ data Statement = STPass
 
 -- expresion
 data Expression = EXString String
-                | EXTest Expression (Maybe (Expression, Expression))
+                | EXTest Expression Expression Expression
                 | EXOrTest Expression Expression
                 | EXAndTest Expression Expression
                 | EXNotTest Expression
@@ -243,11 +243,13 @@ pTest :: Parser Expression
 pTest = 
    (do rOrTest <- pOrTest
        rIfCond <- optionMaybe (do pKW "if" 
-                                  rCond <- pOrTest
+                                  rIfCond <- pOrTest
                                   pKW "else"
-                                  rTest <- pTest
-                                  return (rCond, rTest))
-       return $ EXTest rOrTest rIfCond
+                                  rElse <- pTest
+                                  return (rIfCond, rElse))
+       return $ case rIfCond of
+                   Nothing                   -> rOrTest
+                   Just (rIfCond,rElse)      -> EXTest rOrTest rIfCond rElse
    ) <|> pLambdef 
 
 -- or-test expression
