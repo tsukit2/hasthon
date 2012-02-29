@@ -51,7 +51,10 @@ data Expression = EXString String
                 | EXDivide Expression Expression
                 | EXReminder Expression Expression
                 | EXIntDivide Expression Expression
-                | EXFactor Token
+                | EXPositive Expression
+                | EXNegative Expression
+                | EXCompliment Expression
+                | EXPower Token
                   deriving (Eq, Show)
 
 -- parse error object
@@ -339,9 +342,19 @@ opExprParser p ops = do
 
 -- factor expression
 pFactor :: Parser Expression
-pFactor = do
-   tok <- pLTINTEGER <|> pID
-   return $ EXFactor tok
+pFactor = 
+   (do rPrefix <- (pOP "+" >> return EXPositive) <|> 
+                  (pOP "-" >> return EXNegative) <|>
+                  (pOP "~" >> return EXCompliment)
+       rFactor <- pFactor
+       return $ rPrefix rFactor
+   ) <|> pPower
+
+-- power expression
+pPower :: Parser Expression
+pPower = do
+   tok <- pLTINTEGER
+   return $ EXPower tok
    
 -- lambda definition
 pLambdef :: Parser Expression
