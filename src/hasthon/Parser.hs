@@ -254,11 +254,11 @@ pTest =
 
 -- or-test expression
 pOrTest :: Parser Expression
-pOrTest = opExprParser pAndTest [ (pKW "or", flip EXOrTest) ]
+pOrTest = opExprParser pAndTest [ (pKW "or", EXOrTest) ]
 
 -- and-test expression
 pAndTest :: Parser Expression
-pAndTest = opExprParser pNotTest [ (pKW "and", flip EXAndTest) ]
+pAndTest = opExprParser pNotTest [ (pKW "and", EXAndTest) ]
 
 -- not-test expression
 pNotTest :: Parser Expression
@@ -267,16 +267,16 @@ pNotTest = (pKW "not" >> pNotTest >>= (\ex -> return $ EXNotTest ex)) <|> pCompa
 -- comparision expression
 pComparison :: Parser Expression
 pComparison = opExprParser pStarExpr [
-   (pOP "<"               , flip EXLessThan),
-   (pOP ">"               , flip EXGreaterThan),
-   (pOP "=="              , flip EXEqual),
-   (pOP ">="              , flip EXGreaterThanOrEqual),
-   (pOP "<="              , flip EXLessThanOrEqual),
-   (pOP "!="              , flip EXNotEqual),
-   (pKW "in"              , flip EXIn),
-   (pKW "not" >> pKW "in" , flip EXNotIn),
-   (pKW "is"              , flip EXIs),
-   (pKW "is" >> pKW "not" , flip EXIsNot)
+   (pOP "<"               , EXLessThan),
+   (pOP ">"               , EXGreaterThan),
+   (pOP "=="              , EXEqual),
+   (pOP ">="              , EXGreaterThanOrEqual),
+   (pOP "<="              , EXLessThanOrEqual),
+   (pOP "!="              , EXNotEqual),
+   (pKW "in"              , EXIn),
+   (pKW "not" >> pKW "in" , EXNotIn),
+   (pKW "is"              , EXIs),
+   (pKW "is" >> pKW "not" , EXIsNot)
    ]
 
 -- star expression
@@ -289,38 +289,38 @@ pStarExpr = do
    
 -- expression
 pExpression :: Parser Expression
-pExpression = opExprParser pXorExpr [ (pOP "|", flip EXOr) ]
+pExpression = opExprParser pXorExpr [ (pOP "|", EXOr) ]
 
 -- xor expression
 pXorExpr :: Parser Expression
-pXorExpr = opExprParser pAndExpr [ (pOP "^", flip EXXor) ]
+pXorExpr = opExprParser pAndExpr [ (pOP "^", EXXor) ]
 
 -- and expression
 pAndExpr :: Parser Expression
-pAndExpr = opExprParser pShiftExpr [ (pOP "&", flip EXAnd) ]
+pAndExpr = opExprParser pShiftExpr [ (pOP "&", EXAnd) ]
 
 
 -- shift expression
 pShiftExpr :: Parser Expression
 pShiftExpr = opExprParser pArithExpr [
-   (pOP "<<", flip EXLeftShift),
-   (pOP ">>", flip EXRightShift)
+   (pOP "<<", EXLeftShift),
+   (pOP ">>", EXRightShift)
    ]
 
 -- arithmatic expression
 pArithExpr :: Parser Expression
 pArithExpr = opExprParser pTerm [
-   (pOP "+", flip EXPlus),
-   (pOP "-", flip EXMinus)
+   (pOP "+", EXPlus),
+   (pOP "-", EXMinus)
    ]
 
 -- term expression
 pTerm :: Parser Expression
 pTerm = opExprParser pFactor [
-   (pOP "*" , flip EXMultiply),
-   (pOP "/" , flip EXDivide),
-   (pOP "%" , flip EXReminder),
-   (pOP "//", flip EXIntDivide)
+   (pOP "*" , EXMultiply),
+   (pOP "/" , EXDivide),
+   (pOP "%" , EXReminder),
+   (pOP "//", EXIntDivide)
    ]
 
 
@@ -328,14 +328,14 @@ pTerm = opExprParser pFactor [
 opExprParser :: (Parser Expression) -> [((Parser Token), (Expression -> Expression -> Expression))] -> Parser Expression
 opExprParser p ops = do
    rP <- p
-   rest <- optionMaybe $ choice optionalParsers
-   case rest of
-      Nothing        ->    return rP
-      Just f         ->    return $ f rP
+   rest <- many $ choice optionalParsers
+   return $ if null rest 
+               then rP
+               else foldl (\x f -> f x) rP rest
    where optionalParsers :: [Parser (Expression -> Expression)]
          optionalParsers = map toMany1 ops
          toMany1 :: (Parser Token, (Expression -> Expression -> Expression)) -> Parser (Expression -> Expression)
-         toMany1 (op,f)  = (many1 $ op >> p) >>= (\ex -> return (\x -> foldr f x ex))
+         toMany1 (op,f)  = (op >> p) >>= (\x -> return $ (flip f) x)
 
 -- factor expression
 pFactor :: Parser Expression
