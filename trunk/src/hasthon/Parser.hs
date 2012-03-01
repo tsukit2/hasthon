@@ -54,7 +54,11 @@ data Expression = EXString String
                 | EXPositive Expression
                 | EXNegative Expression
                 | EXCompliment Expression
-                | EXPower Token
+                | EXPower Expression Expression
+                | EXFuncCall Expression [Expression]
+                | EXSubscipt Expression [Expression]
+                | EXMemberRef Expression Token 
+                | EXAtom Token
                   deriving (Eq, Show)
 
 -- parse error object
@@ -326,6 +330,40 @@ pTerm = opExprParser pFactor [
    (pOP "//", EXIntDivide)
    ]
 
+-- factor expression
+pFactor :: Parser Expression
+pFactor = 
+   (do rPrefix <- (pOP "+" >> return EXPositive) <|> 
+                  (pOP "-" >> return EXNegative) <|>
+                  (pOP "~" >> return EXCompliment)
+       rFactor <- pFactor
+       return $ rPrefix rFactor
+   ) <|> pPower
+
+-- power expression
+pPower :: Parser Expression
+pPower = do
+   rAtom <- pAtom
+   rTrailers <- many pTrailer
+   rAtomModifiers <- option rTrailers (pOP "**" >> pFactor >>= (\e -> return $ rTrailers ++ [(\x -> EXPower x e)]))
+   return $ if null rAtomModifiers 
+               then rAtom
+               else foldl (\x f -> f x) rAtom rAtomModifiers
+
+-- atom expression
+pAtom :: Parser Expression
+pAtom = do
+   tok <- pID <|> pLTINTEGER
+   return $ EXAtom tok
+
+-- trailer expression
+pTrailer :: Parser (Expression -> Expression)
+pTrailer = 
+   choice [ (pDEL "(" >> pDEL ")" >> return (\e -> EXFuncCall e [])),
+            (pDEL "[" >> pDEL "]" >> return (\e -> EXSubscipt e [])),
+            (pDEL "." >> pID >>= (\name -> return (\e -> EXMemberRef e name)))
+          ]
+
 
 -- utility function to parse repeated expression of different operators but same precedence
 opExprParser :: (Parser Expression) -> [((Parser Token), (Expression -> Expression -> Expression))] -> Parser Expression
@@ -340,22 +378,6 @@ opExprParser p ops = do
          toMany1 :: (Parser Token, (Expression -> Expression -> Expression)) -> Parser (Expression -> Expression)
          toMany1 (op,f)  = (op >> p) >>= (\x -> return $ (flip f) x)
 
--- factor expression
-pFactor :: Parser Expression
-pFactor = 
-   (do rPrefix <- (pOP "+" >> return EXPositive) <|> 
-                  (pOP "-" >> return EXNegative) <|>
-                  (pOP "~" >> return EXCompliment)
-       rFactor <- pFactor
-       return $ rPrefix rFactor
-   ) <|> pPower
-
--- power expression
-pPower :: Parser Expression
-pPower = do
-   tok <- pLTINTEGER
-   return $ EXPower tok
-   
 -- lambda definition
 pLambdef :: Parser Expression
 pLambdef = do
