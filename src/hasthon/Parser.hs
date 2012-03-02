@@ -16,7 +16,7 @@ data ABSTree = ABSTree String
 data Statement = STPass 
                | STBreak
                | STContinue
-               | STReturn (Maybe [Expression])
+               | STReturn (Maybe Expression)
                | STRaise (Maybe (Expression, Maybe Expression))
                | STYield (Maybe Expression)
                | STGlobal [Token]
@@ -24,7 +24,14 @@ data Statement = STPass
                  deriving (Eq, Show)
 
 -- expresion
-data Expression = EXString String
+data Expression = EXString [Token]
+                | EXByte [Token]
+                | EXNumber Token
+                | EXId Token 
+                | EXEllipsis Token
+                | EXBoolean Token
+                | EXNone Token
+                | EXTuple [Expression]
                 | EXTest Expression Expression Expression
                 | EXOrTest Expression Expression
                 | EXAndTest Expression Expression
@@ -239,11 +246,11 @@ yieldExpr = do
 
 
 -- test list epression
-pTestlist :: Parser [Expression]
+pTestlist :: Parser Expression
 pTestlist = do
    rTests <- pTest `sepBy1` pDEL ","
    optional $ pDEL ","
-   return rTests
+   return $ if length rTests > 1 then EXTuple rTests else head rTests
 
 -- test expression
 pTest :: Parser Expression
@@ -352,9 +359,18 @@ pPower = do
 
 -- atom expression
 pAtom :: Parser Expression
-pAtom = do
-   tok <- pID <|> pLTINTEGER
-   return $ EXAtom tok
+pAtom = 
+   parenAtom <|> squareAtom <|> braceAtom <|> terminalAtom
+   where terminalAtom = (pID >>= (return . EXId)) <|> 
+                        ((pLTINTEGER <|> pLTFLOAT <|> pLTIMAGINARY) >>= (return . EXNumber)) <|>
+                        (many1 pLTSTR >>= (return . EXString)) <|>
+                        (many1 pLTBYTES >>= (return . EXByte)) <|>
+                        (pDEL "..." >>= (return . EXEllipsis)) <|>
+                        (pKW "None" >>= (return . EXNone)) <|>
+                        ((pKW "True" <|> pKW "False") >>= (return . EXBoolean))
+         parenAtom    = do fail ""
+         squareAtom   = do fail ""
+         braceAtom    = do fail ""
 
 -- trailer expression
 pTrailer :: Parser (Expression -> Expression)
