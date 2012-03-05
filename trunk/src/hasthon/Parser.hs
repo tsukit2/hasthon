@@ -65,8 +65,15 @@ data Expression = EXString [Token]
                 | EXFuncCall Expression [Expression]
                 | EXSubscipt Expression [Expression]
                 | EXMemberRef Expression Token 
+                | EXYield (Maybe Expression)
+                | EXGenerator Expression [ListComprehension]
                 | EXAtom Token
                   deriving (Eq, Show)
+
+-- list comprehension element
+data ListComprehension = LCFor Expression Expression
+                       | LCIf Expression
+                         deriving (Eq, Show)
 
 -- parse error object
 data ParseError = ScannerError ScanError
@@ -122,8 +129,8 @@ singleInputGrammar = do
 -- file input grammar
 fileInputGrammar :: Parser ABSTree
 fileInputGrammar = do 
-   stmts <- many stmt
-   return $ if null stmts then ABSTree "fileInputGrammar" else head stmts
+   rStmts <- many pStmt
+   return $ if null rStmts then ABSTree "fileInputGrammar" else head rStmts
 
 -- eval input grammar
 evalInputGrammar :: Parser ABSTree
@@ -132,102 +139,101 @@ evalInputGrammar = do
    return $ ABSTree "evalInputGrammar"
 
 -- statement
-stmt :: Parser ABSTree
-stmt = do 
-   simpleStmt <|> compoundStmt
+pStmt :: Parser ABSTree
+pStmt = pSimpleStmt <|> pCompoundStmt
 
 -- simple statement
-simpleStmt :: Parser ABSTree
-simpleStmt = do
-   firstStmt <- smallStmt
-   otherStmts <- many (pDEL ";" >> smallStmt >>= return)
+pSimpleStmt :: Parser ABSTree
+pSimpleStmt = do
+   rFirstStmt <- pSmallStmt
+   rOtherStmts <- many (pDEL ";" >> pSmallStmt >>= return)
    optional $ pDEL ";"
    pNEWLINE
-   return $ Stmts (firstStmt : otherStmts)
+   return $ Stmts (rFirstStmt : rOtherStmts)
 
 -- compound statement statement
-compoundStmt :: Parser ABSTree
-compoundStmt = do
+pCompoundStmt :: Parser ABSTree
+pCompoundStmt = do
    fail ""
    return $ ABSTree "compoundStmt"
 
 -- small statement
-smallStmt :: Parser ABSTree
-smallStmt = 
-   exprStmt <|> delStmt <|> passStmt <|> flowStmt <|>
-      importStmt <|> globalStmt <|> nonlocalStmt <|> assertStmt
+pSmallStmt :: Parser ABSTree
+pSmallStmt = 
+   pExprStmt <|> pDelStmt <|> pPassStmt <|> pFlowStmt <|>
+      pImportStmt <|> pGlobalStmt <|> pNonlocalStmt <|> pAssertStmt
 
 
 -- expresion statement
-exprStmt :: Parser ABSTree
-exprStmt = do
+pExprStmt :: Parser ABSTree
+pExprStmt = do
    fail ""
    return $ ABSTree "exprStmt"
    
 -- delete statement
-delStmt :: Parser ABSTree
-delStmt = do
+pDelStmt :: Parser ABSTree
+pDelStmt = do
    fail ""
    return $ ABSTree "delStmt"
    
 -- pass statement
-passStmt :: Parser ABSTree
-passStmt = do
+pPassStmt :: Parser ABSTree
+pPassStmt = do
    pKW "pass"
    return $ ABSStmt STPass
    
 -- flow statement
-flowStmt :: Parser ABSTree
-flowStmt = breakStmt <|> continueStmt <|> returnStmt <|> raiseStmt <|> yieldStmt
+pFlowStmt :: Parser ABSTree
+pFlowStmt = pBreakStmt <|> pContinueStmt <|> pReturnStmt <|> pRaiseStmt <|> pYieldStmt
 
 -- import statement
-importStmt :: Parser ABSTree
-importStmt = do
+pImportStmt :: Parser ABSTree
+pImportStmt = do
    fail ""
    return $ ABSTree "importStmt"
    
 -- global statement
-globalStmt :: Parser ABSTree
-globalStmt = do
+pGlobalStmt :: Parser ABSTree
+pGlobalStmt = do
    pKW "global"
-   names <- pID `sepBy1` pDEL ","
-   return $ ABSStmt $ STGlobal names
+   rNames <- pID `sepBy1` pDEL ","
+   return $ ABSStmt $ STGlobal rNames
    
 -- non-local statement
-nonlocalStmt :: Parser ABSTree
-nonlocalStmt = do
+pNonlocalStmt :: Parser ABSTree
+pNonlocalStmt = do
    pKW "nonlocal"
-   names <- pID `sepBy1` pDEL ","
-   return $ ABSStmt $ STNonlocal names
+   rNames <- pID `sepBy1` pDEL ","
+   return $ ABSStmt $ STNonlocal rNames
    
 -- assert statement
-assertStmt :: Parser ABSTree
-assertStmt = do
+pAssertStmt :: Parser ABSTree
+pAssertStmt = do
    fail ""
    return $ ABSTree "assertStmt"
 
 -- break statment
-breakStmt :: Parser ABSTree
-breakStmt = do
+pBreakStmt :: Parser ABSTree
+pBreakStmt = do
    pKW "break"
    return $ ABSStmt STBreak
 
 -- continue statment
-continueStmt :: Parser ABSTree
-continueStmt = do
+pContinueStmt :: Parser ABSTree
+pContinueStmt = do
    pKW "continue"
    return $ ABSStmt STContinue
 
 -- return statement
-returnStmt :: Parser ABSTree
-returnStmt = do
+pReturnStmt :: Parser ABSTree
+pReturnStmt = do
    pKW "return"
    rTestlist <- optionMaybe pTestlist
    return $ ABSStmt $ STReturn rTestlist
 
 -- raise statement
-raiseStmt :: Parser ABSTree
-raiseStmt = do
+pRaiseStmt :: Parser ABSTree
+pRaiseStmt = do
    pKW "raise" 
    rTest <- optionMaybe (do rTest' <- pTest
                             rFrom' <- optionMaybe (pKW "from" >> pTest)
@@ -235,14 +241,12 @@ raiseStmt = do
    return $ ABSStmt $ STRaise rTest
 
 -- yield statement
-yieldStmt :: Parser ABSTree
-yieldStmt = yieldExpr
+pYieldStmt :: Parser ABSTree
+pYieldStmt = pYieldExpr >>= (return . ABSStmt . STYield)
 
 -- yield expression
-yieldExpr :: Parser ABSTree
-yieldExpr = do
-   pKW "yield"
-   return $ ABSStmt $ STYield Nothing
+pYieldExpr :: Parser (Maybe Expression)
+pYieldExpr = pKW "yield" >> optionMaybe pTestlist
 
 
 -- test list epression
@@ -251,6 +255,13 @@ pTestlist = do
    rTests <- pTest `sepBy1` pDEL ","
    optional $ pDEL ","
    return $ if length rTests > 1 then EXTuple rTests else head rTests
+
+-- expression list
+pExprlist :: Parser Expression
+pExprlist = do
+   rStarExprs <- pStarExpr `sepBy1` pDEL ","
+   optional $ pDEL ","
+   return $ if length rStarExprs > 1 then EXTuple rStarExprs else head rStarExprs
 
 -- test expression
 pTest :: Parser Expression
@@ -265,6 +276,10 @@ pTest =
                    Nothing                   -> rOrTest
                    Just (rIfCond,rElse)      -> EXTest rOrTest rIfCond rElse
    ) <|> pLambdef 
+
+-- test no condition
+pTestNoCond :: Parser Expression
+pTestNoCond = pOrTest <|> pLambdefNoCond
 
 -- or-test expression
 pOrTest :: Parser Expression
@@ -368,9 +383,46 @@ pAtom =
                         (pDEL "..." >>= (return . EXEllipsis)) <|>
                         (pKW "None" >>= (return . EXNone)) <|>
                         ((pKW "True" <|> pKW "False") >>= (return . EXBoolean))
-         parenAtom    = do fail ""
+         parenAtom    = do pDEL "(" >> ((pYieldExpr >>= (return . EXYield)) <|> pTestlistComp) >>= (\e -> pDEL ")" >> return e)
          squareAtom   = do fail ""
          braceAtom    = do fail ""
+
+
+-- test list comp expression
+pTestlistComp :: Parser Expression
+pTestlistComp = 
+   try (do rTest <- pTest
+           rCompFor <- pCompFor
+           return $ EXGenerator rTest rCompFor
+   ) <|> pTestlist
+
+-- comprehension for expression
+pCompFor :: Parser [ListComprehension]
+pCompFor = do
+   rCompFor <- (do pKW "for"
+                   rExplist <- pExprlist
+                   pKW "in"
+                   rOrTest <- pOrTest
+                   return $ LCFor rExplist rOrTest
+               )
+   rMore <- many pCompIter
+   return $ rCompFor : concat rMore
+
+-- comprehension if expression
+pCompIf :: Parser [ListComprehension]
+pCompIf = do
+   rCompIf <- (do pKW "if"
+                  rTestCond <- pTestNoCond
+                  return $ LCIf rTestCond
+              )
+   rMore <- many pCompIter
+   return $ rCompIf : concat rMore
+
+-- comprehension iteration expression
+pCompIter :: Parser [ListComprehension]
+pCompIter = pCompFor <|> pCompIf
+
+
 
 -- trailer expression
 pTrailer :: Parser (Expression -> Expression)
@@ -397,6 +449,11 @@ opExprParser p ops = do
 -- lambda definition
 pLambdef :: Parser Expression
 pLambdef = do
+   fail "not supported yet"
+
+-- lambda definition with no condition
+pLambdefNoCond :: Parser Expression
+pLambdefNoCond = do
    fail "not supported yet"
 
 
