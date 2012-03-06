@@ -4,6 +4,7 @@ import Text.Parsec
 import qualified Text.Parsec.Prim as PS
 import qualified Text.Parsec.Error as PE
 import Hasthon.Scanner
+import Data.Maybe
  
 -- abstract syntax tree
 data ABSTree = ABSTree String
@@ -32,6 +33,7 @@ data Expression = EXString [Token]
                 | EXBoolean Token
                 | EXNone Token
                 | EXTuple [Expression]
+                | EXList [Expression]
                 | EXTest Expression Expression Expression
                 | EXOrTest Expression Expression
                 | EXAndTest Expression Expression
@@ -66,14 +68,15 @@ data Expression = EXString [Token]
                 | EXSubscipt Expression [Expression]
                 | EXMemberRef Expression Token 
                 | EXYield (Maybe Expression)
-                | EXGenerator Expression [ListComprehension]
+                | EXGenerator Expression [ListComp]
+                | EXListComp Expression [ListComp]
                 | EXAtom Token
                   deriving (Eq, Show)
 
 -- list comprehension element
-data ListComprehension = LCFor Expression Expression
-                       | LCIf Expression
-                         deriving (Eq, Show)
+data ListComp = LCFor Expression Expression
+              | LCIf Expression
+                deriving (Eq, Show)
 
 -- parse error object
 data ParseError = ScannerError ScanError
@@ -252,16 +255,22 @@ pYieldExpr = pKW "yield" >> optionMaybe pTestlist
 -- test list epression
 pTestlist :: Parser Expression
 pTestlist = do
-   rTests <- pTest `sepBy1` pDEL ","
-   optional $ pDEL ","
-   return $ if length rTests > 1 then EXTuple rTests else head rTests
+   rTest <- pTest
+   rMoreTests <- many $ try $ pDEL "," >> pTest
+   rExtraCommad <- optionMaybe $ pDEL ","
+   return $ if null rMoreTests && isNothing rExtraCommad
+               then rTest
+               else EXTuple (rTest : rMoreTests)
 
 -- expression list
 pExprlist :: Parser Expression
 pExprlist = do
-   rStarExprs <- pStarExpr `sepBy1` pDEL ","
-   optional $ pDEL ","
-   return $ if length rStarExprs > 1 then EXTuple rStarExprs else head rStarExprs
+   rStarExpr <- pStarExpr 
+   rMoreStarExprs <- many $ try $ pDEL "," >> pStarExpr
+   rExtraComma <- optionMaybe $ pDEL ","
+   return $ if null rMoreStarExprs && isNothing rExtraComma 
+               then rStarExpr 
+               else EXTuple (rStarExpr : rMoreStarExprs)
 
 -- test expression
 pTest :: Parser Expression
@@ -383,8 +392,18 @@ pAtom =
                         (pDEL "..." >>= (return . EXEllipsis)) <|>
                         (pKW "None" >>= (return . EXNone)) <|>
                         ((pKW "True" <|> pKW "False") >>= (return . EXBoolean))
-         parenAtom    = do pDEL "(" >> ((pYieldExpr >>= (return . EXYield)) <|> pTestlistComp) >>= (\e -> pDEL ")" >> return e)
-         squareAtom   = do fail ""
+         parenAtom    = do pDEL "(" 
+                           rYieldOrListComp <- optionMaybe ((pYieldExpr >>= (return . EXYield)) <|> pTestlistComp) 
+                           pDEL ")" 
+                           return $ fromMaybe (EXTuple []) rYieldOrListComp
+         squareAtom   = do pDEL "["
+                           rListComp <- optionMaybe pTestlistComp
+                           pDEL "]"
+                           return $ case rListComp of
+                                       Nothing                 -> EXList []
+                                       Just (EXTuple exprs)    -> EXList exprs
+                                       Just (EXGenerator a b)  -> EXListComp a b
+                                       Just sthelse            -> EXList [sthelse]
          braceAtom    = do fail ""
 
 
@@ -397,7 +416,7 @@ pTestlistComp =
    ) <|> pTestlist
 
 -- comprehension for expression
-pCompFor :: Parser [ListComprehension]
+pCompFor :: Parser [ListComp]
 pCompFor = do
    rCompFor <- (do pKW "for"
                    rExplist <- pExprlist
@@ -409,7 +428,7 @@ pCompFor = do
    return $ rCompFor : concat rMore
 
 -- comprehension if expression
-pCompIf :: Parser [ListComprehension]
+pCompIf :: Parser [ListComp]
 pCompIf = do
    rCompIf <- (do pKW "if"
                   rTestCond <- pTestNoCond
@@ -419,7 +438,7 @@ pCompIf = do
    return $ rCompIf : concat rMore
 
 -- comprehension iteration expression
-pCompIter :: Parser [ListComprehension]
+pCompIter :: Parser [ListComp]
 pCompIter = pCompFor <|> pCompIf
 
 
