@@ -424,10 +424,7 @@ pDictOrSetMaker = pDict <|> pSet
                           return $ EXDict (rKeyValPair : rMoreKVPair)) )
                     
                     
-         pKeyValPair = do rKey <- pTest
-                          pDEL ":"
-                          rValue <- pTest
-                          return (rKey,rValue)
+         pKeyValPair = pTest >>= (\k -> pDEL ":" >> pTest >>= (\v -> return (k,v)))
          pSet        = do rTest <- pTest
                           ( (pCompFor >>= (return . (EXSetComp rTest))) 
                             <|>
