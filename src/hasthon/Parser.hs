@@ -34,6 +34,8 @@ data Expression = EXString [Token]
                 | EXNone Token
                 | EXTuple [Expression]
                 | EXList [Expression]
+                | EXDict [(Expression,Expression)]
+                | EXSet [Expression]
                 | EXTest Expression Expression Expression
                 | EXOrTest Expression Expression
                 | EXAndTest Expression Expression
@@ -70,6 +72,8 @@ data Expression = EXString [Token]
                 | EXYield (Maybe Expression)
                 | EXGenerator Expression [ListComp]
                 | EXListComp Expression [ListComp]
+                | EXDictComp (Expression,Expression) [ListComp]
+                | EXSetComp Expression [ListComp]
                 | EXAtom Token
                   deriving (Eq, Show)
 
@@ -257,8 +261,8 @@ pTestlist :: Parser Expression
 pTestlist = do
    rTest <- pTest
    rMoreTests <- many $ try $ pDEL "," >> pTest
-   rExtraCommad <- optionMaybe $ pDEL ","
-   return $ if null rMoreTests && isNothing rExtraCommad
+   rExtraComma <- optionMaybe $ pDEL ","
+   return $ if null rMoreTests && isNothing rExtraComma
                then rTest
                else EXTuple (rTest : rMoreTests)
 
@@ -404,7 +408,32 @@ pAtom =
                                        Just (EXTuple exprs)    -> EXList exprs
                                        Just (EXGenerator a b)  -> EXListComp a b
                                        Just sthelse            -> EXList [sthelse]
-         braceAtom    = do fail ""
+         braceAtom    = do pDEL "{"
+                           rSetOrDict <- optionMaybe pDictOrSetMaker
+                           pDEL "]"
+                           return $ fromMaybe (EXDict []) rSetOrDict
+
+-- dictionary or set maker expression
+pDictOrSetMaker :: Parser Expression
+pDictOrSetMaker = pDict <|> pSet
+   where pDict = do rKeyValPair <- pKeyValPair
+                    ( (pCompFor >>= (return . (EXDictComp rKeyValPair))) 
+                      <|> 
+                      (do rMoreKVPair <- many $ try $ pDEL "," >> pKeyValPair
+                          optional $ pDEL ","
+                          return $ EXDict (rKeyValPair : rMoreKVPair)) )
+                    
+                    
+         pKeyValPair = do rKey <- pTest
+                          pDEL ":"
+                          rValue <- pTest
+                          return (rKey,rValue)
+         pSet        = do rTest <- pTest
+                          ( (pCompFor >>= (return . (EXSetComp rTest))) 
+                            <|>
+                            (do rMoreTests <- many $ try $ pDEL "," >> pTest
+                                optional $ pDEL ","
+                                return $ EXSet (rTest : rMoreTests)) )
 
 
 -- test list comp expression
