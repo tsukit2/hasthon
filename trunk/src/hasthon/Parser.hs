@@ -410,12 +410,12 @@ pAtom =
                                        Just sthelse            -> EXList [sthelse]
          braceAtom    = do pDEL "{"
                            rSetOrDict <- optionMaybe pDictOrSetMaker
-                           pDEL "]"
+                           pDEL "}"
                            return $ fromMaybe (EXDict []) rSetOrDict
 
 -- dictionary or set maker expression
 pDictOrSetMaker :: Parser Expression
-pDictOrSetMaker = pDict <|> pSet
+pDictOrSetMaker = try pDict <|> pSet
    where pDict = do rKeyValPair <- pKeyValPair
                     ( (pCompFor >>= (return . (EXDictComp rKeyValPair))) 
                       <|> 
