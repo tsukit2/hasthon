@@ -74,7 +74,7 @@ data Expression = EXString [Token]
                 | EXListComp Expression [ListComp]
                 | EXDictComp (Expression,Expression) [ListComp]
                 | EXSetComp Expression [ListComp]
-                | EXAtom Token
+                | EXNameArg Token Expression
                   deriving (Eq, Show)
 
 -- list comprehension element
@@ -472,11 +472,41 @@ pCompIter = pCompFor <|> pCompIf
 -- trailer expression
 pTrailer :: Parser (Expression -> Expression)
 pTrailer = 
-   choice [ (pDEL "(" >> pDEL ")" >> return (\e -> EXFuncCall e [])),
+   choice [ (pDEL "(" >> (optionMaybe pArgList) >>= (\a -> pDEL ")" >> return (\e -> EXFuncCall e $ fromMaybe [] a))),
             (pDEL "[" >> pDEL "]" >> return (\e -> EXSubscipt e [])),
             (pDEL "." >> pID >>= (\name -> return (\e -> EXMemberRef e name)))
           ]
 
+-- argument list expression
+pArgList :: Parser [Expression]
+pArgList = 
+   manyTill' (pArgument >>= (\a -> pDEL "," >> return a)) ( 
+      try ( 
+         (pArgument >>= (\a -> optional (pDEL ",") >> lookAhead (pDEL ")") >> return [a]))
+         <|>
+         (do pOP "*"
+             rStarArg <- pTest 
+             rMoreArgs <- many (pDEL "," >> pArgument)
+             rDoubleStarArg <- optionMaybe (pDEL "," >> pOP "**" >> pTest)
+             let args = rStarArg : rMoreArgs in return $ maybe args (\a -> args ++ [a]) rDoubleStarArg
+         )
+         <|>
+         fail ""
+      )
+   )
+   where -- this is a modified copy of the original manyTill to return the till part 
+         manyTill' p end = scan
+            where scan = ( end >>= return )
+                       <|>
+                         do{ x <- p; xs <- scan; return (x:xs) }
+
+
+-- argument expression
+pArgument :: Parser Expression
+pArgument = 
+   try (pID >>= (\a -> pDEL "=" >> pTest >>= (\b -> return $ EXNameArg a b)))
+   <|>
+   (pTest >>= (\a -> optionMaybe pCompFor >>= (return . (maybe a (EXGenerator a)))))
 
 -- utility function to parse repeated expression of different operators but same precedence
 opExprParser :: (Parser Expression) -> [((Parser Token), (Expression -> Expression -> Expression))] -> Parser Expression
@@ -547,6 +577,5 @@ pLTFLOAT       = tok (mktok $ TTLiteral $ LTFloat "")          "Float Literal"
 pLTIMAGINARY   = tok (mktok $ TTLiteral $ LTImaginary "" "")   "Imaginary Literal"
 pOP s          = tok (mktok $ TTOperator s)                    $ "Operator \"" ++ s ++ "\""
 pDEL s         = tok (mktok $ TTDelimeter s)                   $ "Delimeter \"" ++ s ++ "\""
-
 
 
