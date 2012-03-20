@@ -51,6 +51,7 @@ data Expression = EXString [Token]
                 | EXIs Expression Expression
                 | EXIsNot Expression Expression
                 | EXStar Expression
+                | EXDoubleStar Expression
                 | EXOr Expression Expression
                 | EXXor Expression Expression
                 | EXAnd Expression Expression
@@ -269,12 +270,12 @@ pTestlist = do
 -- expression list
 pExprlist :: Parser Expression
 pExprlist = do
-   rStarExpr <- pStarExpr 
-   rMoreStarExprs <- many $ try $ pDEL "," >> pStarExpr
+   rExpr <- pTestOrStar
+   rMoreExprs <- many $ try $ pDEL "," >> pTestOrStar
    rExtraComma <- optionMaybe $ pDEL ","
-   return $ if null rMoreStarExprs && isNothing rExtraComma 
-               then rStarExpr 
-               else EXTuple (rStarExpr : rMoreStarExprs)
+   return $ if null rMoreExprs && isNothing rExtraComma 
+               then rExpr 
+               else EXTuple (rExpr : rMoreExprs)
 
 -- test expression
 pTest :: Parser Expression
@@ -308,7 +309,7 @@ pNotTest = (pKW "not" >> pNotTest >>= (\ex -> return $ EXNotTest ex)) <|> pCompa
 
 -- comparision expression
 pComparison :: Parser Expression
-pComparison = opExprParser pStarExpr [
+pComparison = opExprParser pExpr [
    (pOP "<"               , EXLessThan),
    (pOP ">"               , EXGreaterThan),
    (pOP "=="              , EXEqual),
@@ -323,15 +324,12 @@ pComparison = opExprParser pStarExpr [
 
 -- star expression
 pStarExpr :: Parser Expression
-pStarExpr = do
-   rStar <- optionMaybe $ pOP "*"
-   case rStar of
-      Just _   -> pExpression >>= (\exp -> return $ EXStar exp)
-      Nothing  -> pExpression 
+pStarExpr = 
+   pOP "*" >>  pExpr >>= (\exp -> return $ EXStar exp)
    
 -- expression
-pExpression :: Parser Expression
-pExpression = opExprParser pXorExpr [ (pOP "|", EXOr) ]
+pExpr :: Parser Expression
+pExpr = opExprParser pXorExpr [ (pOP "|", EXOr) ]
 
 -- xor expression
 pXorExpr :: Parser Expression
@@ -435,11 +433,17 @@ pDictOrSetMaker = try pDict <|> pSet
 
 -- test list comp expression
 pTestlistComp :: Parser Expression
-pTestlistComp = 
-   try (do rTest <- pTest
-           rCompFor <- pCompFor
-           return $ EXGenerator rTest rCompFor
-   ) <|> pTestlist
+pTestlistComp = do
+   rTest <- pTestOrStar
+   (
+      (do rCompFor <- pCompFor
+          return $ EXGenerator rTest rCompFor) 
+      <|> 
+      (do rMoreTests <- many $ try $ pDEL "," >> pTestOrStar
+          rExtraComma <- optionMaybe $ pDEL ","
+          return $ if null rMoreTests && isNothing rExtraComma
+                      then rTest
+                      else EXTuple (rTest : rMoreTests)) )
 
 -- comprehension for expression
 pCompFor :: Parser [ListComp]
@@ -485,13 +489,13 @@ pArgList =
          (pArgument >>= (\a -> optional (pDEL ",") >> lookAhead (pDEL ")") >> return [a]))
          <|>
          (do pOP "*"
-             rStarArg <- pTest 
-             rMoreArgs <- many (pDEL "," >> pArgument)
-             rDoubleStarArg <- optionMaybe (pDEL "," >> pOP "**" >> pTest)
-             let args = rStarArg : rMoreArgs in return $ maybe args (\a -> args ++ [a]) rDoubleStarArg
+             rTestArg <- pTest 
+             rMoreArgs <- many $ try (pDEL "," >> pArgument)
+             rDoubleStarArg <- optionMaybe (pDEL "," >> pDoubleStarArg)
+             let args = EXStar rTestArg : rMoreArgs in return $ maybe args (\a -> args ++ a) rDoubleStarArg
          )
          <|>
-         fail ""
+         pDoubleStarArg
       )
    )
    where -- this is a modified copy of the original manyTill to return the till part 
@@ -499,6 +503,7 @@ pArgList =
             where scan = ( end >>= return )
                        <|>
                          do{ x <- p; xs <- scan; return (x:xs) }
+         pDoubleStarArg = pOP "**" >> pTest >>= (\a -> return [EXDoubleStar a])
 
 
 -- argument expression
@@ -578,4 +583,8 @@ pLTIMAGINARY   = tok (mktok $ TTLiteral $ LTImaginary "" "")   "Imaginary Litera
 pOP s          = tok (mktok $ TTOperator s)                    $ "Operator \"" ++ s ++ "\""
 pDEL s         = tok (mktok $ TTDelimeter s)                   $ "Delimeter \"" ++ s ++ "\""
 
+
+-- shortcut to refer to either test or star expr
+pTestOrStar :: Parser Expression
+pTestOrStar = pStarExpr <|> pTest
 
