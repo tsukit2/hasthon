@@ -68,7 +68,8 @@ data Expression = EXString [Token]
                 | EXCompliment Expression
                 | EXPower Expression Expression
                 | EXFuncCall Expression [Expression]
-                | EXSubscipt Expression [Expression]
+                | EXSubscipt Expression Expression
+                | EXSlice (Maybe Expression) (Maybe Expression) (Maybe Expression)
                 | EXMemberRef Expression Token 
                 | EXYield (Maybe Expression)
                 | EXGenerator Expression [ListComp]
@@ -477,7 +478,7 @@ pCompIter = pCompFor <|> pCompIf
 pTrailer :: Parser (Expression -> Expression)
 pTrailer = 
    choice [ (pDEL "(" >> (optionMaybe pArgList) >>= (\a -> pDEL ")" >> return (\e -> EXFuncCall e $ fromMaybe [] a))),
-            (pDEL "[" >> pDEL "]" >> return (\e -> EXSubscipt e [])),
+            (pDEL "[" >> pSubscriptList >>= (\s -> pDEL "]" >> return (\e -> EXSubscipt e s))),
             (pDEL "." >> pID >>= (\name -> return (\e -> EXMemberRef e name)))
           ]
 
@@ -512,6 +513,34 @@ pArgument =
    try (pID >>= (\a -> pDEL "=" >> pTest >>= (\b -> return $ EXNameArg a b)))
    <|>
    (pTest >>= (\a -> optionMaybe pCompFor >>= (return . (maybe a (EXGenerator a)))))
+
+
+-- subscript list
+pSubscriptList :: Parser Expression
+pSubscriptList = do
+   rSubscript <- pSubscript
+   rMoreSubs <- many $ try $ pDEL "," >> pSubscript
+   rExtraComma <- optionMaybe $ pDEL ","
+   return $ if null rMoreSubs && isNothing rExtraComma 
+               then rSubscript
+               else EXTuple (rSubscript : rMoreSubs)
+   
+
+-- subscript
+pSubscript :: Parser Expression
+pSubscript = 
+   try (do pStart <- optionMaybe pTest
+           pDEL ":"
+           pStop <- optionMaybe pTest
+           pInc <- optionMaybe pSliceOp
+           return $ EXSlice pStart pStop (fromMaybe Nothing pInc))
+   <|>
+   pTest
+
+-- slice op
+pSliceOp :: Parser (Maybe Expression)
+pSliceOp = pDEL ":" >> optionMaybe pTest
+
 
 -- utility function to parse repeated expression of different operators but same precedence
 opExprParser :: (Parser Expression) -> [((Parser Token), (Expression -> Expression -> Expression))] -> Parser Expression
