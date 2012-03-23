@@ -22,6 +22,7 @@ data Statement = STPass
                | STYield (Maybe Expression)
                | STGlobal [Token]
                | STNonlocal [Token]
+               | STDel Expression
                  deriving (Eq, Show)
 
 -- expresion
@@ -176,14 +177,18 @@ pSmallStmt =
 -- expresion statement
 pExprStmt :: Parser ABSTree
 pExprStmt = do
-   fail ""
+   rExpr <- pTestlistStarExpr
+   (pAugAssign >> (pYieldExpr <|> pTestlist))
+   <|>
+
    return $ ABSTree "exprStmt"
    
 -- delete statement
 pDelStmt :: Parser ABSTree
 pDelStmt = do
-   fail ""
-   return $ ABSTree "delStmt"
+   pKW "del"
+   rExprList <- pExprlist
+   return $ ABSStmt $ STDel rExprList
    
 -- pass statement
 pPassStmt :: Parser ABSTree
