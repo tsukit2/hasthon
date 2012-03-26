@@ -23,6 +23,9 @@ data Statement = STPass
                | STGlobal [Token]
                | STNonlocal [Token]
                | STDel Expression
+               | STExpr Expression
+               | STAssign Expression [Expression]
+               | STAugAssign Expression 
                  deriving (Eq, Show)
 
 -- expresion
@@ -62,7 +65,7 @@ data Expression = EXString [Token]
                 | EXMinus Expression Expression
                 | EXMultiply Expression Expression
                 | EXDivide Expression Expression
-                | EXReminder Expression Expression
+                | EXMod Expression Expression
                 | EXIntDivide Expression Expression
                 | EXPositive Expression
                 | EXNegative Expression
@@ -177,11 +180,30 @@ pSmallStmt =
 -- expresion statement
 pExprStmt :: Parser ABSTree
 pExprStmt = do
-   rExpr <- pTestlistStarExpr
-   (pAugAssign >> (pYieldExpr <|> pTestlist))
-   <|>
+   rStmt <- (pTestlistStarExpr >>= (\rExpr ->
+                (pAugAssign >>= (\augop -> (pYieldExpr <|> pTestlist) >>= (\val -> return $ STAugAssign $ augop rExpr val)))
+                <|>
+                ((many (pOP "=" >> (pYieldExpr <|> pTestlist))) >>= (\vals -> return $ if null vals then STExpr rExpr else STAssign rExpr vals))))
+   return $ ABSStmt rStmt
 
-   return $ ABSTree "exprStmt"
+-- test list star expression
+pTestlistStarExpr :: Parser Expression
+pTestlistStarExpr = do
+   rTest <- pTestOrStar
+   rMoreTests <- many $ try $ pDEL "," >> pTestOrStar
+   rExtraComma <- optionMaybe $ pDEL ","
+   return $ if null rMoreTests && isNothing rExtraComma
+               then rTest
+               else EXTuple (rTest : rMoreTests)
+
+-- augmented assign
+pAugAssign :: Parser (Expression -> Expression -> Expression)
+pAugAssign = choice $ map (\(del, ex) -> pDEL del >> return ex) augops
+   where augops = [
+            ("+=",  EXPlus),      ("-=", EXMinus),       ("*=", EXMultiply),  ("/=", EXDivide), 
+            ("%=",  EXMod),       ("&=", EXAnd),         ("|=", EXOr),        ("^=", EXXor), 
+            ("<<=", EXLeftShift), (">>=", EXRightShift), ("**=", EXPower),    ("//=", EXIntDivide)
+            ]
    
 -- delete statement
 pDelStmt :: Parser ABSTree
@@ -256,11 +278,11 @@ pRaiseStmt = do
 
 -- yield statement
 pYieldStmt :: Parser ABSTree
-pYieldStmt = pYieldExpr >>= (return . ABSStmt . STYield)
+pYieldStmt = pYieldExpr >>= (\(EXYield y) -> return $ ABSStmt $ STYield y)
 
 -- yield expression
-pYieldExpr :: Parser (Maybe Expression)
-pYieldExpr = pKW "yield" >> optionMaybe pTestlist
+pYieldExpr :: Parser Expression
+pYieldExpr = pKW "yield" >> optionMaybe pTestlist >>= (\y -> return $ EXYield y)
 
 
 -- test list epression
@@ -365,7 +387,7 @@ pTerm :: Parser Expression
 pTerm = opExprParser pFactor [
    (pOP "*" , EXMultiply),
    (pOP "/" , EXDivide),
-   (pOP "%" , EXReminder),
+   (pOP "%" , EXMod),
    (pOP "//", EXIntDivide)
    ]
 
@@ -401,7 +423,7 @@ pAtom =
                         (pKW "None" >>= (return . EXNone)) <|>
                         ((pKW "True" <|> pKW "False") >>= (return . EXBoolean))
          parenAtom    = do pDEL "(" 
-                           rYieldOrListComp <- optionMaybe ((pYieldExpr >>= (return . EXYield)) <|> pTestlistComp) 
+                           rYieldOrListComp <- optionMaybe (pYieldExpr  <|> pTestlistComp) 
                            pDEL ")" 
                            return $ fromMaybe (EXTuple []) rYieldOrListComp
          squareAtom   = do pDEL "["
