@@ -153,8 +153,8 @@ pythonTokens = do
    (tokenType, pos') <- lexeme False keywordToken <|> 
                         lexeme False identifierToken <|> 
                         lexeme False newLine <|> 
-                        lexeme False operatorToken <|>
                         lexeme False delimeterToken <|>
+                        lexeme False operatorToken <|>
                         lexeme False numberToken <|> 
                         lexeme False stringToken <|>
                         getTokAndPos commentToken  <|>

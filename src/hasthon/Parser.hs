@@ -183,7 +183,7 @@ pExprStmt = do
    rStmt <- (pTestlistStarExpr >>= (\rExpr ->
                 (pAugAssign >>= (\augop -> (pYieldExpr <|> pTestlist) >>= (\val -> return $ STAugAssign $ augop rExpr val)))
                 <|>
-                ((many (pOP "=" >> (pYieldExpr <|> pTestlist))) >>= (\vals -> return $ if null vals then STExpr rExpr else STAssign rExpr vals))))
+                ((many (pDEL "=" >> (pYieldExpr <|> pTestlist))) >>= (\vals -> return $ if null vals then STExpr rExpr else STAssign rExpr vals))))
    return $ ABSStmt rStmt
 
 -- test list star expression
