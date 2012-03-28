@@ -7,10 +7,11 @@ import Hasthon.Scanner
 import Data.Maybe
  
 -- abstract syntax tree
-data ABSTree = ABSTree String
-             | ABSStmt Statement
-             | Stmts [ABSTree]
-               deriving (Eq, Show)
+data ParseTree = PTFoo String
+               | PTFileInput [Statement]
+               | PTSingleInput Statement
+               | PTEvalInput Expression
+                 deriving (Eq, Show)
 
 
 -- statement
@@ -26,6 +27,8 @@ data Statement = STPass
                | STExpr Expression
                | STAssign Expression [Expression]
                | STAugAssign Expression 
+               | STBundle [Statement]
+               | STFoo String
                  deriving (Eq, Show)
 
 -- expresion
@@ -121,7 +124,7 @@ test mode input = do
 --
 
 -- parse start here
-parse :: ParseMode -> String -> Either Hasthon.Parser.ParseError ABSTree
+parse :: ParseMode -> String -> Either Hasthon.Parser.ParseError ParseTree
 parse mode input = 
    case (scan input) of
       Right tokens   -> case (runParser pythonGrammar () "" tokens) of
@@ -134,57 +137,55 @@ parse mode input =
                             EvalInput   -> evalInputGrammar
 
 -- single input grammar
-singleInputGrammar :: Parser ABSTree
+singleInputGrammar :: Parser ParseTree
 singleInputGrammar = do 
    fail ""
-   return $ ABSTree "singleInputGrammar"
+   return $ PTFoo "singleInputGrammar"
 
 -- file input grammar
-fileInputGrammar :: Parser ABSTree
-fileInputGrammar = do 
-   rStmts <- many pStmt
-   return $ if null rStmts then ABSTree "fileInputGrammar" else head rStmts
+fileInputGrammar :: Parser ParseTree
+fileInputGrammar = many pStmt >>= (return . PTFileInput)
 
 -- eval input grammar
-evalInputGrammar :: Parser ABSTree
+evalInputGrammar :: Parser ParseTree
 evalInputGrammar = do 
    fail ""
-   return $ ABSTree "evalInputGrammar"
+   return $ PTFoo "evalInputGrammar"
 
 -- statement
-pStmt :: Parser ABSTree
+pStmt :: Parser Statement
 pStmt = pSimpleStmt <|> pCompoundStmt
 
 -- simple statement
-pSimpleStmt :: Parser ABSTree
+pSimpleStmt :: Parser Statement
 pSimpleStmt = do
    rFirstStmt <- pSmallStmt
    rOtherStmts <- many (pDEL ";" >> pSmallStmt >>= return)
    optional $ pDEL ";"
    pNEWLINE
-   return $ Stmts (rFirstStmt : rOtherStmts)
+   return $ if null rOtherStmts then rFirstStmt else STBundle (rFirstStmt : rOtherStmts)
 
 -- compound statement statement
-pCompoundStmt :: Parser ABSTree
+pCompoundStmt :: Parser Statement
 pCompoundStmt = do
    fail ""
-   return $ ABSTree "compoundStmt"
+   return $ STFoo "compoundStmt"
 
 -- small statement
-pSmallStmt :: Parser ABSTree
+pSmallStmt :: Parser Statement
 pSmallStmt = 
    pExprStmt <|> pDelStmt <|> pPassStmt <|> pFlowStmt <|>
       pImportStmt <|> pGlobalStmt <|> pNonlocalStmt <|> pAssertStmt
 
 
 -- expresion statement
-pExprStmt :: Parser ABSTree
+pExprStmt :: Parser Statement
 pExprStmt = do
    rStmt <- (pTestlistStarExpr >>= (\rExpr ->
                 (pAugAssign >>= (\augop -> (pYieldExpr <|> pTestlist) >>= (\val -> return $ STAugAssign $ augop rExpr val)))
                 <|>
                 ((many (pDEL "=" >> (pYieldExpr <|> pTestlist))) >>= (\vals -> return $ if null vals then STExpr rExpr else STAssign rExpr vals))))
-   return $ ABSStmt rStmt
+   return rStmt
 
 -- test list star expression
 pTestlistStarExpr :: Parser Expression
@@ -206,79 +207,79 @@ pAugAssign = choice $ map (\(del, ex) -> pDEL del >> return ex) augops
             ]
    
 -- delete statement
-pDelStmt :: Parser ABSTree
+pDelStmt :: Parser Statement
 pDelStmt = do
    pKW "del"
    rExprList <- pExprlist
-   return $ ABSStmt $ STDel rExprList
+   return $ STDel rExprList
    
 -- pass statement
-pPassStmt :: Parser ABSTree
+pPassStmt :: Parser Statement
 pPassStmt = do
    pKW "pass"
-   return $ ABSStmt STPass
+   return STPass
    
 -- flow statement
-pFlowStmt :: Parser ABSTree
+pFlowStmt :: Parser Statement
 pFlowStmt = pBreakStmt <|> pContinueStmt <|> pReturnStmt <|> pRaiseStmt <|> pYieldStmt
 
 -- import statement
-pImportStmt :: Parser ABSTree
+pImportStmt :: Parser Statement
 pImportStmt = do
    fail ""
-   return $ ABSTree "importStmt"
+   return $ STFoo "importStmt"
    
 -- global statement
-pGlobalStmt :: Parser ABSTree
+pGlobalStmt :: Parser Statement
 pGlobalStmt = do
    pKW "global"
    rNames <- pID `sepBy1` pDEL ","
-   return $ ABSStmt $ STGlobal rNames
+   return $ STGlobal rNames
    
 -- non-local statement
-pNonlocalStmt :: Parser ABSTree
+pNonlocalStmt :: Parser Statement
 pNonlocalStmt = do
    pKW "nonlocal"
    rNames <- pID `sepBy1` pDEL ","
-   return $ ABSStmt $ STNonlocal rNames
+   return $ STNonlocal rNames
    
 -- assert statement
-pAssertStmt :: Parser ABSTree
+pAssertStmt :: Parser Statement
 pAssertStmt = do
    fail ""
-   return $ ABSTree "assertStmt"
+   return $ STFoo "assertStmt"
 
 -- break statment
-pBreakStmt :: Parser ABSTree
+pBreakStmt :: Parser Statement
 pBreakStmt = do
    pKW "break"
-   return $ ABSStmt STBreak
+   return STBreak
 
 -- continue statment
-pContinueStmt :: Parser ABSTree
+pContinueStmt :: Parser Statement
 pContinueStmt = do
    pKW "continue"
-   return $ ABSStmt STContinue
+   return STContinue
 
 -- return statement
-pReturnStmt :: Parser ABSTree
+pReturnStmt :: Parser Statement
 pReturnStmt = do
    pKW "return"
    rTestlist <- optionMaybe pTestlist
-   return $ ABSStmt $ STReturn rTestlist
+   return $ STReturn rTestlist
 
 -- raise statement
-pRaiseStmt :: Parser ABSTree
+pRaiseStmt :: Parser Statement
 pRaiseStmt = do
    pKW "raise" 
    rTest <- optionMaybe (do rTest' <- pTest
                             rFrom' <- optionMaybe (pKW "from" >> pTest)
                             return (rTest', rFrom'))
-   return $ ABSStmt $ STRaise rTest
+   return $ STRaise rTest
 
 -- yield statement
-pYieldStmt :: Parser ABSTree
-pYieldStmt = pYieldExpr >>= (\(EXYield y) -> return $ ABSStmt $ STYield y)
+pYieldStmt :: Parser Statement
+pYieldStmt = pYieldExpr >>= (\(EXYield y) -> return $ STYield y)
 
 -- yield expression
 pYieldExpr :: Parser Expression
