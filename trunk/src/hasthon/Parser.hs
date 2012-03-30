@@ -27,6 +27,7 @@ data Statement = STPass
                | STExpr Expression
                | STAssign Expression [Expression]
                | STAugAssign Expression 
+               | STAssert Expression (Maybe Expression)
                | STBundle [Statement]
                | STFoo String
                  deriving (Eq, Show)
@@ -144,7 +145,10 @@ singleInputGrammar = do
 
 -- file input grammar
 fileInputGrammar :: Parser ParseTree
-fileInputGrammar = many pStmt >>= (return . PTFileInput)
+fileInputGrammar = many pStmt >>= (return . PTFileInput . unbundle)
+   where unbundle = foldr (\x y -> case x of (STBundle s) -> s ++ y
+                                             s            -> s : y) 
+                          []
 
 -- eval input grammar
 evalInputGrammar :: Parser ParseTree
@@ -246,8 +250,10 @@ pNonlocalStmt = do
 -- assert statement
 pAssertStmt :: Parser Statement
 pAssertStmt = do
-   fail ""
-   return $ STFoo "assertStmt"
+   pKW "assert"
+   rCond <- pTest
+   rMsg <- optionMaybe (pDEL "," >> pTest)
+   return $ STAssert rCond rMsg
 
 -- break statment
 pBreakStmt :: Parser Statement
