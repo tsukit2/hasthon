@@ -28,6 +28,7 @@ data Statement = STPass
                | STAssign Expression [Expression]
                | STAugAssign Expression 
                | STAssert Expression (Maybe Expression)
+               | STImportNames [([Token], Maybe Token)]
                | STBundle [Statement]
                | STFoo String
                  deriving (Eq, Show)
@@ -229,9 +230,40 @@ pFlowStmt = pBreakStmt <|> pContinueStmt <|> pReturnStmt <|> pRaiseStmt <|> pYie
 
 -- import statement
 pImportStmt :: Parser Statement
-pImportStmt = do
-   fail ""
-   return $ STFoo "importStmt"
+pImportStmt = pImportName <|> pImportFrom
+
+-- import name
+pImportName :: Parser Statement
+pImportName = pKW "import" >> pDottedAsNames >>= (return . STImportNames)
+
+-- dotted as nameS (many)
+pDottedAsNames :: Parser [([Token], Maybe Token)]
+pDottedAsNames = do
+   rDottedName <- pDottedAsName
+   rMoreNames <- many (pDEL "," >> pDottedAsName)
+   return $ rDottedName : rMoreNames
+
+-- dotted as name (single)
+pDottedAsName :: Parser ([Token], Maybe Token)
+pDottedAsName = do
+   rDottedName <- pDottedName
+   rAsName <- optionMaybe (pKW "as" >> pID)
+   return (rDottedName, rAsName)
+
+-- dotted name
+pDottedName :: Parser [Token]
+pDottedName = do
+   rName <- pID
+   rNestedNames <- many (pDEL "." >> pID)
+   return $ rName : rNestedNames
+
+
+-- import from
+pImportFrom :: Parser Statement
+pImportFrom = do
+   fail "ImportFrom"
+   return $ STFoo "ImportFrom"
+
    
 -- global statement
 pGlobalStmt :: Parser Statement
