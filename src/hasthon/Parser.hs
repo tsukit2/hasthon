@@ -29,6 +29,7 @@ data Statement = STPass
                | STAugAssign Expression 
                | STAssert Expression (Maybe Expression)
                | STImportNames [([Token], Maybe Token)]
+               | STImportFrom [Token] [Token] [(Token, Maybe Token)]
                | STBundle [Statement]
                | STFoo String
                  deriving (Eq, Show)
@@ -261,9 +262,34 @@ pDottedName = do
 -- import from
 pImportFrom :: Parser Statement
 pImportFrom = do
-   fail "ImportFrom"
-   return $ STFoo "ImportFrom"
+   pKW "from"
+   (rLevel, rDottedName) <- try (do rLevel <- many (pDEL "." <|> pDEL "...") 
+                                    rDottedName <- pDottedName 
+                                    return (rLevel, rDottedName))
+                            <|>
+                            (many1 (pDEL "." <|> pDEL "...") >>= (\l -> return (l, [])))
+   pKW "import"
+   rWhatToImport <- (pOP "*" >>= (\t -> return [(t, Nothing)]))
+                    <|>
+                    (pDEL "(" >> pImportAsNames >>= (\names -> pDEL ")" >> return names))
+                    <|>
+                    pImportAsNames
+   return $ STImportFrom rLevel rDottedName rWhatToImport
 
+-- import-as names
+pImportAsNames :: Parser [(Token, Maybe Token)]
+pImportAsNames = do
+   rName <- pImportAsName
+   rMoreNames <- many $ try $ pDEL "," >> pImportAsName
+   optional $ pDEL ","
+   return (rName : rMoreNames)
+
+-- import-as name (single name)
+pImportAsName :: Parser (Token, Maybe Token)
+pImportAsName = do
+   rName <- pID
+   rAsName <- optionMaybe (pKW "as" >> pID)
+   return (rName, rAsName)
    
 -- global statement
 pGlobalStmt :: Parser Statement
