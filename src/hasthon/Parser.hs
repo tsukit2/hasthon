@@ -87,12 +87,19 @@ data Expression = EXString [Token]
                 | EXDictComp (Expression,Expression) [ListComp]
                 | EXSetComp Expression [ListComp]
                 | EXNameArg Token Expression
+                | EXLambda [VarArg] Expression
                   deriving (Eq, Show)
 
 -- list comprehension element
 data ListComp = LCFor Expression Expression
               | LCIf Expression
                 deriving (Eq, Show)
+
+-- variable argument list
+data VarArg = VAPlain Token (Maybe Expression)
+            | VAStar (Maybe Token)
+            | VADoubleStar Token
+              deriving (Eq, Show)
 
 -- parse error object
 data ParseError = ScannerError ScanError
@@ -650,13 +657,47 @@ opExprParser p ops = do
 -- lambda definition
 pLambdef :: Parser Expression
 pLambdef = do
-   fail "not supported yet"
+   pKW "lambda"
+   rArgs <- pVarArgsList
+   pDEL ":"
+   rTest <- pTest
+   return $ EXLambda rArgs rTest
 
--- lambda definition with no condition
+-- lambda definition without condition
 pLambdefNoCond :: Parser Expression
 pLambdefNoCond = do
-   fail "not supported yet"
+   pKW "lambda"
+   rArgs <- pVarArgsList
+   pDEL ":"
+   rTestNoCond <- pTestNoCond
+   return $ EXLambda rArgs rTestNoCond
 
+-- variable argument list
+pVarArgsList :: Parser [VarArg]
+pVarArgsList = do
+   (do rArg <- pPlainArg
+       rMoreArgs <- many $ try (pDEL "," >> pPlainArg)
+       rArrayAndDictArgs <- optionMaybe (pDEL "," >> optionMaybe pArrayAndDictArgs)
+       let arrayAndDictArgs = case rArrayAndDictArgs of
+                                 Nothing           -> []
+                                 Just Nothing      -> []
+                                 Just (Just ad)    -> ad
+       return $ (rArg : rMoreArgs) ++ arrayAndDictArgs)
+   <|>
+   pArrayAndDictArgs
+   where pArrayAndDictArgs = (do rArrayArg <- (pOP "*" >> optionMaybe pVfpDef >>= return . VAStar)
+                                 rMoreArgs <- many $ try (pDEL "," >> pPlainArg)
+                                 rDictArg <- optionMaybe (pDEL "," >> pDictArg)
+                                 return $ (rArrayArg : rMoreArgs) ++ maybe [] (:[]) rDictArg)
+                             <|>
+                             (pDictArg >>= return . (:[]))
+         pDictArg          = pDEL "**" >> pVfpDef >>= return . VADoubleStar
+         pPlainArg         = pVfpDef >>= (\a -> optionMaybe (pDEL "=" >> pTest) >>= return . (VAPlain a))
+
+
+-- var argument definition
+pVfpDef :: Parser Token
+pVfpDef = pID
 
 -- utility function to help parsing token
 tok :: Token -> String -> Parser Token
