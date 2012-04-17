@@ -658,19 +658,19 @@ opExprParser p ops = do
 pLambdef :: Parser Expression
 pLambdef = do
    pKW "lambda"
-   rArgs <- pVarArgsList
+   rArgs <- optionMaybe pVarArgsList
    pDEL ":"
    rTest <- pTest
-   return $ EXLambda rArgs rTest
+   return $ EXLambda (fromMaybe [] rArgs) rTest
 
 -- lambda definition without condition
 pLambdefNoCond :: Parser Expression
 pLambdefNoCond = do
    pKW "lambda"
-   rArgs <- pVarArgsList
+   rArgs <- optionMaybe pVarArgsList
    pDEL ":"
    rTestNoCond <- pTestNoCond
-   return $ EXLambda rArgs rTestNoCond
+   return $ EXLambda (fromMaybe [] rArgs) rTestNoCond
 
 -- variable argument list
 pVarArgsList :: Parser [VarArg]
@@ -691,7 +691,7 @@ pVarArgsList = do
                                  return $ (rArrayArg : rMoreArgs) ++ maybe [] (:[]) rDictArg)
                              <|>
                              (pDictArg >>= return . (:[]))
-         pDictArg          = pDEL "**" >> pVfpDef >>= return . VADoubleStar
+         pDictArg          = pOP "**" >> pVfpDef >>= return . VADoubleStar
          pPlainArg         = pVfpDef >>= (\a -> optionMaybe (pDEL "=" >> pTest) >>= return . (VAPlain a))
 
 
