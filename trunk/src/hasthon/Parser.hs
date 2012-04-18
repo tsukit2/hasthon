@@ -370,8 +370,8 @@ pTestlist = do
 -- expression list
 pExprlist :: Parser Expression
 pExprlist = do
-   rExpr <- pTestOrStar
-   rMoreExprs <- many $ try $ pDEL "," >> pTestOrStar
+   rExpr <- pExprOrStar
+   rMoreExprs <- many $ try $ pDEL "," >> pExprOrStar
    rExtraComma <- optionMaybe $ pDEL ","
    return $ if null rMoreExprs && isNothing rExtraComma 
                then rExpr 
@@ -561,8 +561,8 @@ pCompFor = do
 pCompIf :: Parser [ListComp]
 pCompIf = do
    rCompIf <- (do pKW "if"
-                  rTestCond <- pTestNoCond
-                  return $ LCIf rTestCond
+                  rTestNoCond <- pTestNoCond
+                  return $ LCIf rTestNoCond
               )
    rMore <- many pCompIter
    return $ rCompIf : concat rMore
@@ -749,4 +749,8 @@ pDEL s         = tok (mktok $ TTDelimeter s)                   $ "Delimeter \"" 
 -- shortcut to refer to either test or star expr
 pTestOrStar :: Parser Expression
 pTestOrStar = pStarExpr <|> pTest
+
+-- shortcut to refer to either expr or star expr
+pExprOrStar :: Parser Expression
+pExprOrStar = pStarExpr <|> pExpr
 
