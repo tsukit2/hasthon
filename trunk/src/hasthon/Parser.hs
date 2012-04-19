@@ -1,3 +1,4 @@
+{- -XTupleSections -}
 module Hasthon.Parser where
 
 import Text.Parsec 
@@ -31,6 +32,7 @@ data Statement = STPass
                | STImportNames [([Token], Maybe Token)]
                | STImportFrom [Token] [Token] [(Token, Maybe Token)]
                | STBundle [Statement]
+               | STIf (Expression,[Statement]) [(Expression,[Statement])] [Statement]
                | STFoo String
                  deriving (Eq, Show)
 
@@ -180,15 +182,54 @@ pSimpleStmt = do
 
 -- compound statement statement
 pCompoundStmt :: Parser Statement
-pCompoundStmt = do
-   fail ""
-   return $ STFoo "compoundStmt"
+pCompoundStmt = pIfStmt <|> pWhileStmt <|> pForStmt <|> pTryStmt <|> pWithStmt <|>
+                pFuncdef <|> pClassdef <|> pDecorated
+
+-- if statement
+pIfStmt :: Parser Statement
+pIfStmt = do
+   rIf <- (pKW "if" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= (return . (t,))))
+   rElsIfs <- many (pKW "elif" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= (return . (t,))))
+   rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
+   return $ STIf rIf rElsIfs $ fromMaybe [] rElse
+
+-- statement suit
+pSuite :: Parser [Statement]
+pSuite = fail "pSuite"
+
+-- while statement
+pWhileStmt :: Parser Statement
+pWhileStmt = fail "pWhileStmt" 
+
+-- for statement
+pForStmt :: Parser Statement
+pForStmt = fail "pForStmt"
+
+-- try statement
+pTryStmt :: Parser Statement
+pTryStmt = fail "pTryStmt"
+
+-- with statement
+pWithStmt :: Parser Statement
+pWithStmt = fail "pWithStmt"
+
+-- function definition statement
+pFuncdef :: Parser Statement
+pFuncdef = fail "pFuncdef"
+
+-- class definition statement
+pClassdef :: Parser Statement
+pClassdef = fail "pClassdef" 
+
+-- decoration statement
+pDecorated :: Parser Statement
+pDecorated = fail "pDecorated"
 
 -- small statement
 pSmallStmt :: Parser Statement
 pSmallStmt = 
    pExprStmt <|> pDelStmt <|> pPassStmt <|> pFlowStmt <|>
-      pImportStmt <|> pGlobalStmt <|> pNonlocalStmt <|> pAssertStmt
+   pImportStmt <|> pGlobalStmt <|> pNonlocalStmt <|> pAssertStmt
 
 
 -- expresion statement
