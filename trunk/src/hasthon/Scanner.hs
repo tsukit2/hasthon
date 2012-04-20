@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module Hasthon.Scanner ( 
    TokenType(..), 
    LiteralValue(..),
@@ -153,8 +154,7 @@ pythonTokens = do
    (tokenType, pos') <- lexeme False keywordToken <|> 
                         lexeme False identifierToken <|> 
                         lexeme False newLine <|> 
-                        lexeme False delimeterToken <|>
-                        lexeme False operatorToken <|>
+                        lexeme False operatorAndDelimeterToken <|>
                         lexeme False numberToken <|> 
                         lexeme False stringToken <|>
                         getTokAndPos commentToken  <|>
@@ -198,13 +198,11 @@ keywordToken = setBasedToken (do kw <- many letter
                                  notFollowedBy alphaNum
                                  return kw) keywordsSet TTKeyword "not a keyword"
 
--- operator token
-operatorToken :: Parser TokenType
-operatorToken = strBasedToken operators TTOperator "not an operator"
-
--- delimeter token
-delimeterToken :: Parser TokenType
-delimeterToken = strBasedToken delimeters TTDelimeter "not a delimeter"
+-- operator and delimiter tokens
+operatorAndDelimeterToken :: Parser TokenType
+operatorAndDelimeterToken = strBasedToken (opers ++ delims) "neither operator nor delimeter"
+   where opers  = map (,TTOperator) operators
+         delims = map (,TTDelimeter) delimeters
 
 -- string token
 stringToken :: Parser TokenType
@@ -269,10 +267,6 @@ operators = [
                "<",      ">",       "<=",      ">=",      "==",      "!="
             ]
 
-operatorsSet = Set.fromList operators
-
-operatorChars = Set.toList $ Set.fromList $ concat operators
-
 -- delimeters
 delimeters = [
                "(",       ")",       "[",       "]",       "{",       "}",
@@ -281,10 +275,6 @@ delimeters = [
                "&=",      "|=",      "^=",      ">>=",     "<<=",     "**=",
                "..."
              ]
-
-delimetersSet = Set.fromList delimeters
-
-delimeterChars = Set.toList $ Set.fromList $ concat delimeters
 
 -- utility to convert between SourcePosition and our SPos
 toSPos :: SourcePos -> SPos
@@ -305,10 +295,11 @@ setBasedToken p s f em = do
        )
 
 -- string-based token type (utility function to make choice parser for longest string first)
-strBasedToken :: [String] -> (String -> TokenType) -> String -> Parser TokenType
-strBasedToken strs tokfunc errmsg = 
-   ((choice $ map (try . string) sortedStrs) <?> errmsg) >>= (return . tokfunc)
+-- string-based token type that can mix different token type together
+strBasedToken :: [(String,(String -> TokenType))] -> String -> Parser TokenType
+strBasedToken strFuncs errmsg = 
+   (choice $ map (\(s,f) -> try (string s) >>= return . f) sortedStrFuncs) <?> errmsg
    where comp (l,_) (l',_) =  compare l' l
-         sortedStrs = snd $ unzip $ sortBy comp strsWithLen
-         strsWithLen = zip (map length strs) strs
+         sortedStrFuncs = snd $ unzip $ sortBy comp strFuncsWithLen
+         strFuncsWithLen = zip (map (length . fst) strFuncs) strFuncs
 

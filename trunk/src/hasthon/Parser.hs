@@ -1,4 +1,4 @@
-{- -XTupleSections -}
+{-# LANGUAGE TupleSections #-}
 module Hasthon.Parser where
 
 import Text.Parsec 
@@ -156,10 +156,7 @@ singleInputGrammar = do
 
 -- file input grammar
 fileInputGrammar :: Parser ParseTree
-fileInputGrammar = many pStmt >>= (return . PTFileInput . unbundle)
-   where unbundle = foldr (\x y -> case x of (STBundle s) -> s ++ y
-                                             s            -> s : y) 
-                          []
+fileInputGrammar = many pStmt >>= (return . PTFileInput . unbundleStmts)
 
 -- eval input grammar
 evalInputGrammar :: Parser ParseTree
@@ -195,7 +192,9 @@ pIfStmt = do
 
 -- statement suit
 pSuite :: Parser [Statement]
-pSuite = fail "pSuite"
+pSuite = (pSimpleStmt >>= return . unbundleStmts . (:[]))
+        <|> 
+         (pNEWLINE >> pINDENT >> many pStmt >>= (\s -> pDEDENT >> return s))
 
 -- while statement
 pWhileStmt :: Parser Statement
@@ -794,4 +793,10 @@ pTestOrStar = pStarExpr <|> pTest
 -- shortcut to refer to either expr or star expr
 pExprOrStar :: Parser Expression
 pExprOrStar = pStarExpr <|> pExpr
+
+-- utility to unbundle statement
+unbundleStmts :: [Statement] -> [Statement]
+unbundleStmts = foldr (\x y -> case x of (STBundle s) -> s ++ y
+                                         s            -> s : y) 
+                      []
 
