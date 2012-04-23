@@ -33,6 +33,8 @@ data Statement = STPass
                | STImportFrom [Token] [Token] [(Token, Maybe Token)]
                | STBundle [Statement]
                | STIf (Expression,[Statement]) [(Expression,[Statement])] [Statement]
+               | STWhile (Expression,[Statement]) [Statement]
+               | STFor (Expression,[Statement]) [Statement]
                | STFoo String
                  deriving (Eq, Show)
 
@@ -198,11 +200,24 @@ pSuite = (pSimpleStmt >>= return . unbundleStmts . (:[]))
 
 -- while statement
 pWhileStmt :: Parser Statement
-pWhileStmt = fail "pWhileStmt" 
+pWhileStmt = do
+   rCondAndCode <- (pKW "while" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= (return . (t,))))
+   rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
+   return $ STWhile rCondAndCode $ fromMaybe [] rElse
 
 -- for statement
 pForStmt :: Parser Statement
-pForStmt = fail "pForStmt"
+pForStmt = do
+   rCondAndcode <- (pKW "for" >> pExprlist >>= (\e -> pKW "in" >> pTestlist >>= (\l -> pDEL ":" >> 
+                   pSuite >>= (return . (EXIn e l,)))))
+   --(do pKW "for" 
+   --             e <- pExprlist 
+   --             pKW "in"
+   --             l <- pTestlist 
+   --             pDEL ":" 
+   --             return $ EXIn e l)
+   rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
+   return $ STFor rCondAndcode $ fromMaybe [] rElse
 
 -- try statement
 pTryStmt :: Parser Statement
