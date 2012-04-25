@@ -35,6 +35,7 @@ data Statement = STPass
                | STIf (Expression,[Statement]) [(Expression,[Statement])] [Statement]
                | STWhile (Expression,[Statement]) [Statement]
                | STFor (Expression,[Statement]) [Statement]
+               | STTry [Statement] [(Maybe (Expression, Maybe Token), [Statement])] [Statement] [Statement]
                | STFoo String
                  deriving (Eq, Show)
 
@@ -158,7 +159,7 @@ singleInputGrammar = do
 
 -- file input grammar
 fileInputGrammar :: Parser ParseTree
-fileInputGrammar = many pStmt >>= (return . PTFileInput . unbundleStmts)
+fileInputGrammar = many pStmt >>= return . PTFileInput . unbundleStmts
 
 -- eval input grammar
 evalInputGrammar :: Parser ParseTree
@@ -187,8 +188,8 @@ pCompoundStmt = pIfStmt <|> pWhileStmt <|> pForStmt <|> pTryStmt <|> pWithStmt <
 -- if statement
 pIfStmt :: Parser Statement
 pIfStmt = do
-   rIf <- (pKW "if" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= (return . (t,))))
-   rElsIfs <- many (pKW "elif" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= (return . (t,))))
+   rIf <- (pKW "if" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= return . (t,)))
+   rElsIfs <- many (pKW "elif" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= return . (t,)))
    rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
    return $ STIf rIf rElsIfs $ fromMaybe [] rElse
 
@@ -201,7 +202,7 @@ pSuite = (pSimpleStmt >>= return . unbundleStmts . (:[]))
 -- while statement
 pWhileStmt :: Parser Statement
 pWhileStmt = do
-   rCondAndCode <- (pKW "while" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= (return . (t,))))
+   rCondAndCode <- (pKW "while" >> pTest >>= (\t -> pDEL ":" >> pSuite >>= return . (t,)))
    rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
    return $ STWhile rCondAndCode $ fromMaybe [] rElse
 
@@ -209,19 +210,28 @@ pWhileStmt = do
 pForStmt :: Parser Statement
 pForStmt = do
    rCondAndcode <- (pKW "for" >> pExprlist >>= (\e -> pKW "in" >> pTestlist >>= (\l -> pDEL ":" >> 
-                   pSuite >>= (return . (EXIn e l,)))))
-   --(do pKW "for" 
-   --             e <- pExprlist 
-   --             pKW "in"
-   --             l <- pTestlist 
-   --             pDEL ":" 
-   --             return $ EXIn e l)
+                   pSuite >>= return . (EXIn e l,))))
    rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
    return $ STFor rCondAndcode $ fromMaybe [] rElse
 
 -- try statement
 pTryStmt :: Parser Statement
-pTryStmt = fail "pTryStmt"
+pTryStmt = do
+   rTryBody <- (pKW "try" >>  pDEL ":" >> pSuite)
+   ( (do rExceptClauses <- many1 (pExceptClause >>= (\e -> pDEL ":" >> pSuite >>= return . (e,)))
+         rElse <- optionMaybe (pKW "else" >> pDEL ":" >> pSuite)
+         rFinally <- optionMaybe (pKW "finally" >> pDEL ":" >> pSuite)
+         return $ STTry rTryBody rExceptClauses (fromMaybe [] rElse) (fromMaybe [] rFinally))
+     <|>
+     (pKW "finally" >> pDEL ":" >> pSuite >>= return . (STTry rTryBody [] [])) )
+
+
+-- except clause
+pExceptClause :: Parser (Maybe (Expression, Maybe Token))
+pExceptClause = do
+   pKW "except"
+   rExceptTest <- optionMaybe (pTest >>= (\t -> optionMaybe (pKW "as" >> pID) >>= return . (t,)))
+   return rExceptTest
 
 -- with statement
 pWithStmt :: Parser Statement
@@ -297,7 +307,7 @@ pImportStmt = pImportName <|> pImportFrom
 
 -- import name
 pImportName :: Parser Statement
-pImportName = pKW "import" >> pDottedAsNames >>= (return . STImportNames)
+pImportName = pKW "import" >> pDottedAsNames >>= return . STImportNames
 
 -- dotted as nameS (many)
 pDottedAsNames :: Parser [([Token], Maybe Token)]
@@ -542,13 +552,13 @@ pPower = do
 pAtom :: Parser Expression
 pAtom = 
    parenAtom <|> squareAtom <|> braceAtom <|> terminalAtom
-   where terminalAtom = (pID >>= (return . EXId)) <|> 
-                        ((pLTINTEGER <|> pLTFLOAT <|> pLTIMAGINARY) >>= (return . EXNumber)) <|>
-                        (many1 pLTSTR >>= (return . EXString)) <|>
-                        (many1 pLTBYTES >>= (return . EXByte)) <|>
-                        (pDEL "..." >>= (return . EXEllipsis)) <|>
-                        (pKW "None" >>= (return . EXNone)) <|>
-                        ((pKW "True" <|> pKW "False") >>= (return . EXBoolean))
+   where terminalAtom = (pID >>= return . EXId) <|> 
+                        ((pLTINTEGER <|> pLTFLOAT <|> pLTIMAGINARY) >>= return . EXNumber) <|>
+                        (many1 pLTSTR >>= return . EXString) <|>
+                        (many1 pLTBYTES >>= return . EXByte) <|>
+                        (pDEL "..." >>= return . EXEllipsis) <|>
+                        (pKW "None" >>= return . EXNone) <|>
+                        ((pKW "True" <|> pKW "False") >>= return . EXBoolean)
          parenAtom    = do pDEL "(" 
                            rYieldOrListComp <- optionMaybe (pYieldExpr  <|> pTestlistComp) 
                            pDEL ")" 
@@ -570,7 +580,7 @@ pAtom =
 pDictOrSetMaker :: Parser Expression
 pDictOrSetMaker = try pDict <|> pSet
    where pDict = do rKeyValPair <- pKeyValPair
-                    ( (pCompFor >>= (return . (EXDictComp rKeyValPair))) 
+                    ( (pCompFor >>= return . (EXDictComp rKeyValPair)) 
                       <|> 
                       (do rMoreKVPair <- many $ try $ pDEL "," >> pKeyValPair
                           optional $ pDEL ","
@@ -579,7 +589,7 @@ pDictOrSetMaker = try pDict <|> pSet
                     
          pKeyValPair = pTest >>= (\k -> pDEL ":" >> pTest >>= (\v -> return (k,v)))
          pSet        = do rTest <- pTest
-                          ( (pCompFor >>= (return . (EXSetComp rTest))) 
+                          ( (pCompFor >>= return . (EXSetComp rTest)) 
                             <|>
                             (do rMoreTests <- many $ try $ pDEL "," >> pTest
                                 optional $ pDEL ","
@@ -666,7 +676,7 @@ pArgument :: Parser Expression
 pArgument = 
    try (pID >>= (\a -> pDEL "=" >> pTest >>= (\b -> return $ EXNameArg a b)))
    <|>
-   (pTest >>= (\a -> optionMaybe pCompFor >>= (return . (maybe a (EXGenerator a)))))
+   (pTest >>= (\a -> optionMaybe pCompFor >>= return . (maybe a (EXGenerator a))))
 
 
 -- subscript list
