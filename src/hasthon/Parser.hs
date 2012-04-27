@@ -36,6 +36,7 @@ data Statement = STPass
                | STWhile (Expression,[Statement]) [Statement]
                | STFor (Expression,[Statement]) [Statement]
                | STTry [Statement] [(Maybe (Expression, Maybe Token), [Statement])] [Statement] [Statement]
+               | STWith [(Expression, Maybe Expression)] [Statement]
                | STFoo String
                  deriving (Eq, Show)
 
@@ -235,7 +236,17 @@ pExceptClause = do
 
 -- with statement
 pWithStmt :: Parser Statement
-pWithStmt = fail "pWithStmt"
+pWithStmt = do
+   pKW "with"
+   rFirstItem <- pWithItem
+   rMoreItems <- many (pDEL "," >> pWithItem)
+   pDEL ":"
+   rCode <- pSuite
+   return $ STWith (rFirstItem : rMoreItems) rCode
+
+-- with item
+pWithItem :: Parser (Expression, Maybe Expression)
+pWithItem = pTest >>= (\t -> optionMaybe (pKW "as" >> pExpr) >>= return . (t,))
 
 -- function definition statement
 pFuncdef :: Parser Statement
