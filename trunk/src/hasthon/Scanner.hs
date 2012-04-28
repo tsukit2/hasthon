@@ -273,7 +273,7 @@ delimeters = [
                ",",       ":",       ".",       ";",       "@",       "=",
                "+=",      "-=",      "*=",      "/=",      "//=",     "%=",
                "&=",      "|=",      "^=",      ">>=",     "<<=",     "**=",
-               "..."
+               "...",     "->"
              ]
 
 -- utility to convert between SourcePosition and our SPos
