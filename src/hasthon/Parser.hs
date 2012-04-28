@@ -37,6 +37,7 @@ data Statement = STPass
                | STFor (Expression,[Statement]) [Statement]
                | STTry [Statement] [(Maybe (Expression, Maybe Token), [Statement])] [Statement] [Statement]
                | STWith [(Expression, Maybe Expression)] [Statement]
+               | STFuncDef Token [TypedArg] (Maybe Expression) [Statement]
                | STFoo String
                  deriving (Eq, Show)
 
@@ -106,6 +107,12 @@ data VarArg = VAPlain Token (Maybe Expression)
             | VAStar (Maybe Token)
             | VADoubleStar Token
               deriving (Eq, Show)
+
+-- typed argument list
+data TypedArg = TAPlain (Token,Maybe Expression) (Maybe Expression)
+              | TAStar (Maybe (Token,Maybe Expression))
+              | TADoubleStar (Token,Maybe Expression)
+                deriving (Eq, Show)
 
 -- parse error object
 data ParseError = ScannerError ScanError
@@ -250,7 +257,18 @@ pWithItem = pTest >>= (\t -> optionMaybe (pKW "as" >> pExpr) >>= return . (t,))
 
 -- function definition statement
 pFuncdef :: Parser Statement
-pFuncdef = fail "pFuncdef"
+pFuncdef = do
+   pKW "def"
+   rFuncName <- pID
+   rParams <- pParameters
+   rRetDecorator <- optionMaybe (pDEL "->" >> pTest)
+   pDEL ":"
+   rCode <- pSuite
+   return $ STFuncDef rFuncName rParams rRetDecorator rCode
+
+-- function parameter
+pParameters :: Parser [TypedArg]
+pParameters = pDEL "(" >> optionMaybe pTypedArgsList >>= (\args -> pDEL ")" >> return (fromMaybe [] args))
 
 -- class definition statement
 pClassdef :: Parser Statement
@@ -486,16 +504,16 @@ pNotTest = (pKW "not" >> pNotTest >>= (\ex -> return $ EXNotTest ex)) <|> pCompa
 -- comparision expression
 pComparison :: Parser Expression
 pComparison = opExprParser pExpr [
-   (pOP "<"               , EXLessThan),
-   (pOP ">"               , EXGreaterThan),
-   (pOP "=="              , EXEqual),
-   (pOP ">="              , EXGreaterThanOrEqual),
-   (pOP "<="              , EXLessThanOrEqual),
-   (pOP "!="              , EXNotEqual),
-   (pKW "in"              , EXIn),
-   (pKW "not" >> pKW "in" , EXNotIn),
-   (pKW "is"              , EXIs),
-   (pKW "is" >> pKW "not" , EXIsNot)
+   (pOP "<"                        , EXLessThan),
+   (pOP ">"                        , EXGreaterThan),
+   (pOP "=="                       , EXEqual),
+   (pOP ">="                       , EXGreaterThanOrEqual),
+   (pOP "<="                       , EXLessThanOrEqual),
+   (pOP "!="                       , EXNotEqual),
+   (pKW "in"                       , EXIn),
+   (pKW "not" >> pKW "in"          , EXNotIn),
+   (try (pKW "is" >> pKW "not")    , EXIsNot),
+   (pKW "is"                       , EXIs)
    ]
 
 -- star expression
@@ -748,6 +766,33 @@ pLambdefNoCond = do
    rTestNoCond <- pTestNoCond
    return $ EXLambda (fromMaybe [] rArgs) rTestNoCond
 
+-- typed argument list
+pTypedArgsList :: Parser [TypedArg]
+pTypedArgsList = do
+   (do rArg <- pPlainArg
+       rMoreArgs <- many $ try (pDEL "," >> pPlainArg)
+       rArrayAndDictArgs <- optionMaybe (pDEL "," >> optionMaybe pArrayAndDictArgs)
+       let arrayAndDictArgs = case rArrayAndDictArgs of
+                                 Nothing           -> []
+                                 Just Nothing      -> []
+                                 Just (Just ad)    -> ad
+       return $ (rArg : rMoreArgs) ++ arrayAndDictArgs)
+   <|>
+   pArrayAndDictArgs
+   where pArrayAndDictArgs = (do rArrayArg <- (pOP "*" >> optionMaybe pTfpDef >>= return . TAStar)
+                                 rMoreArgs <- many $ try (pDEL "," >> pPlainArg)
+                                 rDictArg <- optionMaybe (pDEL "," >> pDictArg)
+                                 return $ (rArrayArg : rMoreArgs) ++ maybe [] (:[]) rDictArg)
+                             <|>
+                             (pDictArg >>= return . (:[]))
+         pDictArg          = pOP "**" >> pTfpDef >>= return . TADoubleStar
+         pPlainArg         = pTfpDef >>= (\a -> optionMaybe (pDEL "=" >> pTest) >>= return . (TAPlain a))
+
+
+-- typed argument definition
+pTfpDef :: Parser (Token,Maybe Expression)
+pTfpDef = pID >>= (\n -> optionMaybe (pDEL ":" >> pTest) >>= return . (n,))
+
 -- variable argument list
 pVarArgsList :: Parser [VarArg]
 pVarArgsList = do
@@ -774,6 +819,7 @@ pVarArgsList = do
 -- var argument definition
 pVfpDef :: Parser Token
 pVfpDef = pID
+
 
 -- utility function to help parsing token
 tok :: Token -> String -> Parser Token
