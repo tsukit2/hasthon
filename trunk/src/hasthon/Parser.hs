@@ -38,6 +38,7 @@ data Statement = STPass
                | STTry [Statement] [(Maybe (Expression, Maybe Token), [Statement])] [Statement] [Statement]
                | STWith [(Expression, Maybe Expression)] [Statement]
                | STFuncDef Token [TypedArg] (Maybe Expression) [Statement]
+               | STClassDef Token [Expression] [Statement]
                | STFoo String
                  deriving (Eq, Show)
 
@@ -272,7 +273,12 @@ pParameters = pDEL "(" >> optionMaybe pTypedArgsList >>= (\args -> pDEL ")" >> r
 
 -- class definition statement
 pClassdef :: Parser Statement
-pClassdef = fail "pClassdef" 
+pClassdef = do
+   rName <- pKW "class" >> pID
+   rParents <- optionMaybe (pDEL "(" >> optionMaybe pArgList >>= (\args -> pDEL ")" >> return (fromMaybe [] args)))
+                  >>= return . (fromMaybe [])
+   rCode <- pDEL ":" >> pSuite
+   return $ STClassDef rName rParents rCode
 
 -- decoration statement
 pDecorated :: Parser Statement
