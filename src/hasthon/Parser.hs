@@ -39,6 +39,7 @@ data Statement = STPass
                | STWith [(Expression, Maybe Expression)] [Statement]
                | STFuncDef Token [TypedArg] (Maybe Expression) [Statement]
                | STClassDef Token [Expression] [Statement]
+               | STDecorator [Token] [Expression] Statement
                | STFoo String
                  deriving (Eq, Show)
 
@@ -282,7 +283,24 @@ pClassdef = do
 
 -- decoration statement
 pDecorated :: Parser Statement
-pDecorated = fail "pDecorated"
+pDecorated = do
+   rDecorators <- pDecorators
+   rClassOrFunc <- pClassdef <|> pFuncdef
+   return (foldr ($) rClassOrFunc rDecorators)
+
+-- decorators
+pDecorators :: Parser [(Statement -> Statement)]
+pDecorators = many1 pDecorator
+
+-- decorator
+pDecorator :: Parser (Statement -> Statement)
+pDecorator = do
+   pDEL "@"
+   rName <- pDottedName
+   rArgs <- optionMaybe (pDEL "(" >> optionMaybe pArgList >>= (\args -> pDEL ")" >> return (fromMaybe [] args)))
+               >>= return . (fromMaybe [])
+   pNEWLINE
+   return (STDecorator rName rArgs)
 
 -- small statement
 pSmallStmt :: Parser Statement
