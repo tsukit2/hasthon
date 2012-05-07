@@ -21,6 +21,8 @@ import Data.List
 import Text.Parsec.Error
 import Control.Monad.Error
 import Control.Monad
+import Text.PrettyPrint hiding (char)
+import Hasthon.Common
 
 -- token type
 data TokenType = TTIndent Int
@@ -55,8 +57,11 @@ instance Show SPos where
 data Token = Token TokenType (SPos,SPos)
              deriving (Eq)
 
+instance PrettyPrintable Token where
+   toPrettyDoc (Token tt (p,p')) = text (show tt) <+> text (show p) <> text "-" <> text (show p')
+
 instance Show Token where
-   show (Token tt (p,p')) = show tt ++ " " ++ (show p ++ "-" ++ show p')
+   show tok = show $ toPrettyDoc tok
 
 -- scan error object
 data ScanError = ScanError String SPos

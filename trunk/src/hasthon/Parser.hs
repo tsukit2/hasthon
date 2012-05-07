@@ -6,6 +6,8 @@ import qualified Text.Parsec.Prim as PS
 import qualified Text.Parsec.Error as PE
 import Hasthon.Scanner
 import Data.Maybe
+import Hasthon.Common
+import Text.PrettyPrint hiding (char)
  
 -- abstract syntax tree
 data ParseTree = PTFoo String
@@ -14,6 +16,11 @@ data ParseTree = PTFoo String
                | PTEvalInput Expression
                  deriving (Eq, Show)
 
+instance PrettyPrintable ParseTree where
+   toPrettyDoc pt = case pt of
+                       PTFileInput   stmts -> vcat (map toPrettyDoc stmts)
+                       PTSingleInput stmt  -> toPrettyDoc stmt
+                       PTEvalInput   expr  -> text (show expr)
 
 -- statement
 data Statement = STPass 
@@ -42,6 +49,29 @@ data Statement = STPass
                | STDecorator [Token] [Expression] Statement
                | STFoo String
                  deriving (Eq, Show)
+
+instance PrettyPrintable Statement where
+   toPrettyDoc stmt =
+      case stmt of
+         STIf (cond,ifStmts) elseIfClauses elseStmts ->
+            text "STIf" <+> text (show cond) <+> colon 
+            $+$
+            nest 3 (vcat (map toPrettyDoc ifStmts)) 
+            $+$ 
+            vcat (map (\(c,stmts) -> text "elif" <+> text (show c) <+> colon
+                                     $+$
+                                     nest 3 (vcat (map toPrettyDoc stmts)))
+                  elseIfClauses)
+            $+$
+            if null elseStmts 
+               then empty
+               else text "elif" <+> colon
+                    $+$
+                    nest 3 (vcat (map toPrettyDoc elseStmts))
+
+         everythingElse -> 
+            text (show everythingElse)
+
 
 -- expresion
 data Expression = EXString [Token]
@@ -136,7 +166,7 @@ data ParseMode = SingleInput
 test :: ParseMode -> String -> IO ()
 test mode input = do
   case (Hasthon.Parser.parse mode input) of
-      Right abs   -> (putStrLn . show) abs
+      Right abs   -> (putStrLn . show . toPrettyDoc) abs
       Left err    -> print err
 
 
