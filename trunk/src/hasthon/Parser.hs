@@ -54,24 +54,71 @@ instance PrettyPrintable Statement where
    toPrettyDoc stmt =
       case stmt of
          STIf (cond,ifStmts) elseIfClauses elseStmts ->
-            text "STIf" <+> text (show cond) <+> colon 
+            text "IF" <+> nest 5 (toPrettyDoc cond) <+> colon 
             $+$
             nest 3 (vcat (map toPrettyDoc ifStmts)) 
             $+$ 
-            vcat (map (\(c,stmts) -> text "elif" <+> text (show c) <+> colon
+            vcat (map (\(c,stmts) -> text "ELSE IF" <+> toPrettyDoc c <+> colon
                                      $+$
                                      nest 3 (vcat (map toPrettyDoc stmts)))
                   elseIfClauses)
             $+$
             if null elseStmts 
                then empty
-               else text "elif" <+> colon
+               else text "ELSE" <+> colon
                     $+$
                     nest 3 (vcat (map toPrettyDoc elseStmts))
 
+         STWhile (cond,whileStmts) elseStmts ->
+            text "WHILE" <+> nest 5 (toPrettyDoc cond) <+> colon 
+            $+$
+            nest 3 (vcat (map toPrettyDoc whileStmts)) 
+            $+$ 
+            if null elseStmts 
+               then empty
+               else text "ELSE" <+> colon
+                    $+$
+                    nest 3 (vcat (map toPrettyDoc elseStmts))
+
+         STFor (cond,forStmts) elseStmts ->
+            text "FOR" <+> nest 5 (toPrettyDoc cond) <+> colon 
+            $+$
+            nest 3 (vcat (map toPrettyDoc forStmts)) 
+            $+$ 
+            if null elseStmts 
+               then empty
+               else text "ELSE" <+> colon
+                    $+$
+                    nest 3 (vcat (map toPrettyDoc elseStmts))
+
+         STTry stmts catchBlocks elseStmts finallyStmts ->
+            text "TRY" <+> colon 
+            $+$
+            nest 3 (vcat (map toPrettyDoc stmts)) 
+            $+$ 
+            vcat (map (\(c,stmts) -> text "CATCH" <+> colon <+> maybe empty 
+                                                            (\(e,a) -> toPrettyDoc e <+> (maybe empty ((text "AS" <+>) . toPrettyDoc) a)) 
+                                                            c
+                                                  <+> colon
+                                     $+$
+                                     nest 3 (vcat (map toPrettyDoc stmts)))
+                  catchBlocks)
+            $+$ 
+            if null elseStmts 
+               then empty
+               else text "ELSE" <+> colon
+                    $+$
+                    nest 3 (vcat (map toPrettyDoc elseStmts))
+            $+$ 
+            if null finallyStmts 
+               then empty
+               else text "FINALLY" <+> colon
+                    $+$
+                    nest 3 (vcat (map toPrettyDoc finallyStmts))
+
+
          everythingElse -> 
             text (show everythingElse)
-
 
 -- expresion
 data Expression = EXString [Token]
@@ -128,6 +175,13 @@ data Expression = EXString [Token]
                 | EXNameArg Token Expression
                 | EXLambda [VarArg] Expression
                   deriving (Eq, Show)
+
+instance PrettyPrintable Expression where
+   toPrettyDoc ex =
+      case ex of 
+         everythingElse -> 
+            text (show everythingElse)
+         
 
 -- list comprehension element
 data ListComp = LCFor Expression Expression
