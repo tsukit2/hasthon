@@ -116,6 +116,19 @@ instance PrettyPrintable Statement where
                     $+$
                     nest 3 (vcat (map toPrettyDoc finallyStmts))
 
+         STWith withClause withStmts ->
+            text "WITH" <+> colon 
+            $+$
+            nest 5 (vcat (map (\(w,n) -> toPrettyDoc w <+> (maybe empty ((text "AS" <+>) . toPrettyDoc) n)) withClause))
+            $+$ 
+            nest 3 (vcat (map toPrettyDoc withStmts)) 
+
+         STFuncDef name args retType funcStmts ->
+            text "FUNC" <+> toPrettyDoc name <+> colon <+> (maybe empty ((text "->" <+>) . toPrettyDoc) retType)
+            $+$
+            nest 5 (vcat (map (text . show) args))
+            $+$
+            nest 3 (vcat (map toPrettyDoc funcStmts)) 
 
          everythingElse -> 
             text (show everythingElse)
