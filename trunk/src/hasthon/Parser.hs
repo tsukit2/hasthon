@@ -130,6 +130,21 @@ instance PrettyPrintable Statement where
             $+$
             nest 3 (vcat (map toPrettyDoc funcStmts)) 
 
+
+         STClassDef name parents classStmts ->
+            text "CLASS" <+> colon <+> toPrettyDoc name
+            $+$
+            nest 5 (vcat (map toPrettyDoc parents))
+            $+$
+            nest 3 (vcat (map toPrettyDoc classStmts)) 
+
+         STDecorator dottedName args decStmt ->
+            text "DECORATOR" <+> colon <+> (hcat . punctuate (text ".")) (map toPrettyDoc dottedName)
+            $+$
+            nest 5 (vcat (map (text . show) args))
+            $+$
+            nest 3 (toPrettyDoc decStmt)
+
          everythingElse -> 
             text (show everythingElse)
 
