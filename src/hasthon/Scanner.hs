@@ -189,8 +189,8 @@ identifierToken :: Parser TokenType
 identifierToken = do
    try (
       do
-         firstLetter <- letter 
-         rest <- many alphaNum
+         firstLetter <- letter <|> char '_'
+         rest <- many (letter <|> digit <|> char '_')
          let id = firstLetter : rest
          if not $ id `Set.member` keywordsSet
             then return $ TTIdentifier id
@@ -212,16 +212,22 @@ operatorAndDelimeterToken = strBasedToken (opers ++ delims) "neither operator no
 -- string token
 stringToken :: Parser TokenType
 stringToken = do
-   str <- (try longString <|> shortString)
+   str <- try (optionMaybe strPrefix >>= (\p -> (try longString <|> shortString) >>= return . convert p))
    return $ TTLiteral $ LTString str
-   where shortString = do oneOf "'\"" 
-                          s <- many $ noneOf "'\""
-                          oneOf "'\"" 
-                          return s
-         longString  = do count 3 $ oneOf "'\"" 
-                          s <- many $ noneOf "'\""
-                          count 3 $ oneOf "'\"" 
-                          return s
+   where shortString      = (char '\'' >> many (shortStrItem '\'') >>= (\s -> char '\'' >> return s))
+                            <|>
+                            (char '\"' >> many (shortStrItem '\"') >>= (\s -> char '\"' >> return s))
+         longString       = (string "'''" >> many longStrItem >>= (\s -> string "'''" >> return s))
+                            <|>
+                            (string "\"\"\"" >> many longStrItem >>= (\s -> string "\"\"\"" >> return s))
+         strPrefix        = char 'r' <|> char 'R'
+         shortStrItem q   = shortStrChar q <|> strEscapeSeq
+         longStrItem      = longStrChar <|> strEscapeSeq
+         shortStrChar q   = noneOf ['\\', '\n', q]
+         longStrChar      = noneOf ['\\']
+         strEscapeSeq     = fail "foo"
+         convert p s      = s
+
 
    
 -- number token
