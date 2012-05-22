@@ -23,6 +23,7 @@ import Control.Monad.Error
 import Control.Monad
 import Text.PrettyPrint hiding (char)
 import Hasthon.Common
+import Data.Maybe
 
 -- token type
 data TokenType = TTIndent Int
@@ -214,21 +215,19 @@ stringToken :: Parser TokenType
 stringToken = do
    str <- try (optionMaybe strPrefix >>= (\p -> (try longString <|> shortString) >>= return . convert p))
    return $ TTLiteral $ LTString str
-   where shortString      = (char '\'' >> many (shortStrItem '\'') >>= (\s -> char '\'' >> return s))
+   where shortString      = (char '\'' >> manyTill shortStrItem (char '\'') >>= return . concat)
                             <|>
-                            (char '\"' >> many (shortStrItem '\"') >>= (\s -> char '\"' >> return s))
-         longString       = (string "'''" >> many longStrItem >>= (\s -> string "'''" >> return s))
+                            (char '"' >> manyTill shortStrItem (char '"') >>= return . concat)
+         longString       = (string "'''" >> manyTill longStrItem (try $ string "'''") >>= return . concat)
                             <|>
-                            (string "\"\"\"" >> many longStrItem >>= (\s -> string "\"\"\"" >> return s))
+                            (string "\"\"\"" >> manyTill longStrItem (try $ string "\"\"\"") >>= return . concat)
          strPrefix        = char 'r' <|> char 'R'
-         shortStrItem q   = shortStrChar q <|> strEscapeSeq
-         longStrItem      = longStrChar <|> strEscapeSeq
-         shortStrChar q   = noneOf ['\\', '\n', q]
+         shortStrItem     = (shortStrChar >>= return . (:[])) <|> strEscapeSeq
+         longStrItem      = (longStrChar >>= return . (:[])) <|> strEscapeSeq
+         shortStrChar     = noneOf ['\\', '\n']
          longStrChar      = noneOf ['\\']
-         strEscapeSeq     = fail "foo"
+         strEscapeSeq     = char '\\' >> anyChar >>= return . (\c -> '\\' : c : [])
          convert p s      = s
-
-
    
 -- number token
 numberToken :: Parser TokenType
