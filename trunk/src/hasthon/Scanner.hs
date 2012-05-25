@@ -213,7 +213,7 @@ operatorAndDelimeterToken = strBasedToken (opers ++ delims) "neither operator no
 -- string token
 stringToken :: Parser TokenType
 stringToken = do
-   str <- try (optionMaybe strPrefix >>= (\p -> (try longString <|> shortString) >>= return . convert p))
+   str <- try (optionMaybe strPrefix >>= (\p -> (try longString <|> shortString) >>= convert p))
    return $ TTLiteral $ LTString str
    where shortString      = (char '\'' >> manyTill shortStrItem (char '\'') >>= return . concat)
                             <|>
@@ -227,8 +227,38 @@ stringToken = do
          shortStrChar     = noneOf ['\\', '\n']
          longStrChar      = noneOf ['\\']
          strEscapeSeq     = char '\\' >> anyChar >>= return . (\c -> '\\' : c : [])
-         convert p s      = s
+         convert p s      = if isJust p then return s else performConvert s
+         performConvert s = case s of
+                               ('\\' : '\n' : r)         -> performConvert r
+                               ('\\' : '\'' : r)         -> performConvert r >>= return . ('\'':)
+                               ('\\' : '"'  : r)         -> performConvert r >>= return . ('"':)
+                               ('\\' : 'a'  : r)         -> performConvert r >>= return . ('\a':)
+                               ('\\' : 'b'  : r)         -> performConvert r >>= return . ('\b':)
+                               ('\\' : 'f'  : r)         -> performConvert r >>= return . ('\f':)
+                               ('\\' : 'n'  : r)         -> performConvert r >>= return . ('\n':)
+                               ('\\' : 't'  : r)         -> performConvert r >>= return . ('\t':)
+                               ('\\' : 'v'  : r)         -> performConvert r >>= return . ('\v':)
+                               ('\\' : 'x'  : r)         -> performConvert r >>= return . ('\v':)
+                               ('\\' : r)                -> performConvert r >>= return . ('\v':)
+                               (l    : r)                -> performConvert r >>= return . (l:)
+                               []                        -> return []
+                               
+                               
    
+-- \newline 	Backslash and newline ignored 	 
+-- \\ 	Backslash (\) 	 
+-- \' 	Single quote (') 	 
+-- \" 	Double quote (") 	 
+-- \a 	ASCII Bell (BEL) 	 
+-- \b 	ASCII Backspace (BS) 	 
+-- \f 	ASCII Formfeed (FF) 	 
+-- \n 	ASCII Linefeed (LF) 	 
+-- \r 	ASCII Carriage Return (CR) 	 
+-- \t 	ASCII Horizontal Tab (TAB) 	 
+-- \v 	ASCII Vertical Tab (VT) 	 
+-- \ooo 	Character with octal value ooo 	(1,3)
+-- \xhh 	Character with hex value hh 	(2,3)
+
 -- number token
 numberToken :: Parser TokenType
 numberToken = 
