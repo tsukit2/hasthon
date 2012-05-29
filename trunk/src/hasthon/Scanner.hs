@@ -43,8 +43,8 @@ data TokenType = TTIndent Int
 
 
 -- liternal value type
-data LiteralValue = LTString String
-                  | LTBytes String
+data LiteralValue = LTString Bool String
+                  | LTBytes Bool String
                   | LTInteger String
                   | LTFloat String
                   | LTImaginary String String
@@ -160,12 +160,13 @@ indentDedent = xdentIt [1] True
 pythonTokens :: Parser Token
 pythonTokens = do
    pos <- getPosition
-   (tokenType, pos') <- lexeme False keywordToken <|> 
+   (tokenType, pos') <- lexeme False numberToken <|> 
+                        lexeme False stringToken <|>
+                        lexeme False bytesToken <|>
+                        lexeme False keywordToken <|> 
                         lexeme False identifierToken <|> 
                         lexeme False newLine <|> 
                         lexeme False operatorAndDelimeterToken <|>
-                        lexeme False numberToken <|> 
-                        lexeme False stringToken <|>
                         getTokAndPos commentToken  <|>
                         getTokAndPos lineJoinerToken
    return (Token tokenType (toSPos pos, toSPos pos'))
@@ -213,11 +214,10 @@ operatorAndDelimeterToken = strBasedToken (opers ++ delims) "neither operator no
    where opers  = map (,TTOperator) operators
          delims = map (,TTDelimeter) delimeters
 
--- string token
+-- string token. Note that we defer the escaped chars processing to the semantic level. So is the concatenation.
 stringToken :: Parser TokenType
 stringToken = do
-   str <- try (optionMaybe strPrefix >>= (\p -> (try longString <|> shortString) >>= convert p))
-   return $ TTLiteral $ LTString str
+   try (optionMaybe strPrefix >>= (\p -> (try longString <|> shortString) >>= return . TTLiteral . LTString (isJust p)))
    where shortString      = (char '\'' >> manyTill shortStrItem (char '\'') >>= return . concat)
                             <|>
                             (char '"' >> manyTill shortStrItem (char '"') >>= return . concat)
@@ -230,46 +230,25 @@ stringToken = do
          shortStrChar     = noneOf ['\\', '\n']
          longStrChar      = noneOf ['\\']
          strEscapeSeq     = char '\\' >> anyChar >>= return . (\c -> '\\' : c : [])
-         convert :: Maybe Char -> String -> Parser String
-         convert p s      = if isJust p then return s else doConvert s 0
-         doConvert :: String -> Int -> Parser String
-         doConvert s p    = case s of
-                               ('\\' : l : r)   -> 
-                                    case (l:r) of
-                                       ('\n' : r)  -> doConvert r (p+2)
-                                       ('\'' : r)  -> doConvert r (p+2) >>= return . ('\'':)
-                                       ('"'  : r)  -> doConvert r (p+2) >>= return . ('"':)
-                                       ('a'  : r)  -> doConvert r (p+2) >>= return . ('\a':)
-                                       ('b'  : r)  -> doConvert r (p+2) >>= return . ('\b':)
-                                       ('f'  : r)  -> doConvert r (p+2) >>= return . ('\f':)
-                                       ('n'  : r)  -> doConvert r (p+2) >>= return . ('\n':)
-                                       ('t'  : r)  -> doConvert r (p+2) >>= return . ('\t':)
-                                       ('v'  : r)  -> doConvert r (p+2) >>= return . ('\v':)
-                                       ('x'  : r)  -> doConvertHex r (p+2)
-                                       r           -> doConvertOct r p
-                               (l    : r)       -> doConvert r (p+1) >>= return . (l:)
-                               []               -> return []
-         doConvertHex (h1:h2:r) p | isHexDigit h1 && isHexDigit h2 = doConvert r (p+2) >>= return . ((chr $ toHex (h1:h2:[])):)
-                                  | otherwise                      = fail $ "escaped ecode error at position: " ++ show p ++ "-" ++ show (p+2)
-         doConvertOct s p = doConvert s (p+1)
-         toHex s          = let l = (length s) - 1 in foldl (\a (c,p) -> (digitToInt c `shiftL` (4*p)) + a) 0 (zip s [l,l-1,0])
                                
+-- byte token. Note that we defer the escaped chars processing to the semantic level. So is the concatenation.
+bytesToken :: Parser TokenType
+bytesToken = do
+   try (bytesPrefix >> optionMaybe bytesRawPrefix >>= (\p -> (try longBytes <|> shortBytes) >>= return . TTLiteral . LTBytes (isJust p)))
+   where shortBytes       = (char '\'' >> manyTill shortBytesItem (char '\'') >>= return . concat)
+                            <|>
+                            (char '"' >> manyTill shortBytesItem (char '"') >>= return . concat)
+         longBytes        = (string "'''" >> manyTill longBytesItem (try $ string "'''") >>= return . concat)
+                            <|>
+                            (string "\"\"\"" >> manyTill longBytesItem (try $ string "\"\"\"") >>= return . concat)
+         bytesPrefix      = char 'b' <|> char 'B'
+         bytesRawPrefix   = char 'r' <|> char 'R'
+         shortBytesItem   = (shortBytesChar >>= return . (:[])) <|> bytesEscapeSeq
+         longBytesItem    = (longBytesChar >>= return . (:[])) <|> bytesEscapeSeq
+         shortBytesChar   = noneOf ['\\', '\n']
+         longBytesChar    = noneOf ['\\']
+         bytesEscapeSeq   = char '\\' >> anyChar >>= return . (\c -> '\\' : c : [])
                                
-   
--- \newline 	Backslash and newline ignored 	 
--- \\ 	Backslash (\) 	 
--- \' 	Single quote (') 	 
--- \" 	Double quote (") 	 
--- \a 	ASCII Bell (BEL) 	 
--- \b 	ASCII Backspace (BS) 	 
--- \f 	ASCII Formfeed (FF) 	 
--- \n 	ASCII Linefeed (LF) 	 
--- \r 	ASCII Carriage Return (CR) 	 
--- \t 	ASCII Horizontal Tab (TAB) 	 
--- \v 	ASCII Vertical Tab (VT) 	 
--- \ooo 	Character with octal value ooo 	(1,3)
--- \xhh 	Character with hex value hh 	(2,3)
-
 -- number token
 numberToken :: Parser TokenType
 numberToken = 
