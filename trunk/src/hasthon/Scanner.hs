@@ -45,10 +45,14 @@ data TokenType = TTIndent Int
 -- liternal value type
 data LiteralValue = LTString Bool String
                   | LTBytes Bool String
-                  | LTInteger String
+                  | LTInteger IntegerBase String
                   | LTFloat String
                   | LTImaginary String String
                   deriving (Eq, Show)
+
+-- integer base
+data IntegerBase = Base2 | Base8 | Base10 | Base16
+                   deriving (Eq, Show)
 
 -- source position
 newtype SPos = SPos (Int,Int)
@@ -179,6 +183,7 @@ lexeme sp p = do
    pos <- getPosition
    let spfunc = if sp then many1 else many
    spfunc (char ' ') <|> (eof >> return "")
+   --notFollowedBy (choice (map char allSymbolChars))
    return (tokenType, pos)
 
 
@@ -251,12 +256,36 @@ bytesToken = do
                                
 -- number token
 numberToken :: Parser TokenType
-numberToken = 
-   try ( do
-      digits <- many1 digit
-      notFollowedBy letter
-      return $ TTLiteral $ LTInteger digits
-      )
+numberToken = try imaginaryToken <|> try floatingToken <|> integerToken
+
+
+-- integer token
+integerToken :: Parser TokenType
+integerToken = do number <- octInteger <|> hexInteger <|> binInteger <|> decimalInteger
+                  lookAhead (char ' ' <|> choice (map char allSymbolChars) <|> (eof >> return 'x'))
+                  return $ TTLiteral number
+   where decimalInteger    = do ds <- (nonZeroDigit >>= (\nz -> many digit >>= (\ds -> return (nz:ds))))
+                                      <|>
+                                      (many1 (char '0') >>= return)
+                                return $ LTInteger Base10 ds
+         nonZeroDigit      = range '1' '9'
+         digit             = range '0' '9'
+         octInteger        = try (char '0' >> (char 'o' <|> char 'O')) >> many1 octDigit >>= return . LTInteger Base8
+         hexInteger        = try (char '0' >> (char 'x' <|> char 'X')) >> many1 hexDigit >>= return . LTInteger Base16
+         binInteger        = try (char '0' >> (char 'b' <|> char 'B')) >> many1 binDigit >>= return . LTInteger Base2
+         octDigit          = range '0' '7'
+         hexDigit          = digit <|> range 'a' 'f' <|> range 'A' 'F'
+         binDigit          = char '0' <|> char '1'
+         range a b         = choice (map char [a..b])
+
+-- floating token
+floatingToken :: Parser TokenType
+floatingToken = fail "not support"
+
+-- imaginary token
+imaginaryToken :: Parser TokenType
+imaginaryToken = fail "not supported"
+
 
 -- new line token
 newLine :: Parser TokenType
@@ -297,6 +326,8 @@ operators = [
                "<",      ">",       "<=",      ">=",      "==",      "!="
             ]
 
+operatersChars = Set.toList $ Set.fromList $ concat operators
+
 -- delimeters
 delimeters = [
                "(",       ")",       "[",       "]",       "{",       "}",
@@ -305,6 +336,10 @@ delimeters = [
                "&=",      "|=",      "^=",      ">>=",     "<<=",     "**=",
                "...",     "->"
              ]
+
+-- all symbol characters
+allSymbolChars = Set.toList $ Set.fromList $ concat $ operators ++ delimeters
+
 
 -- utility to convert between SourcePosition and our SPos
 toSPos :: SourcePos -> SPos
