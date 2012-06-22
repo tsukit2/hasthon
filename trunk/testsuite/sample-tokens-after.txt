@@ -1,0 +1,55 @@
+# raw tokens
+
+<CM> <NL>
+x = 5 <NL>
+y = x * 2 <NL>
+<NL>
+<CM> <NL>
+if y > 10 and <LC> <NL>
+x < 5 : <NL>
+print ( "Hi " <NL> "there!" ) <NL>
+if x + y < 10 : <NL>
+print ( "Yes" ) <NL>
+<NL>
+<CM> <NL>
+t = "This is the long text\nand see how it goes" <NL>
+print ( t ) <NL>
+<NL>
+<CM> <NL>
+a = [ 1 , 2 , <CM> <NL>
+3 , 4 ] <NL>
+for w in a : <NL>
+print ( "w = " % w ) <NL>
+<NL>
+
+
+# line removing and joining
+
+x = 5 <NL>
+y = x * 2 <NL>
+if x > 10 and x < 5 : <NL>
+print ( "Hi there!" ) <NL>
+if x + y < 10 : <NL>
+print ( "Yes" ) <NL>
+t = "This is the long text\nand see how it goes" <NL>
+print ( t ) <NL>
+a = [ 1 , 2 , 3 , 4 ] <NL>
+for w in a : <NL>
+print ( "w = " % w ) <NL>
+
+
+# with indent/dedent added
+
+x = 5 <NL>
+y = x * 2 <NL>
+if x > 10 and x < 5 : <NL>
+<IND> print ( "Hi there!" ) <NL> 
+if x + y < 10 : <NL>
+<IND> print ( "Yes" ) <NL> <DED>
+<DED>
+t = "This is the long text\nand see how it goes" <NL>
+print ( t ) <NL>
+a = [ 1 , 2 , 3 , 4 ] <NL>
+for w in a : <NL>
+print ( "w = " % w ) <NL>
+

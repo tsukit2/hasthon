@@ -1,0 +1,31 @@
+# initialize it
+x = 5
+y = x * 2
+
+# check value
+if y > 10 and \
+   x < 5:
+   print("Hi "
+         "there!")
+   if x + y < 10:
+      print("Yes")
+
+# long text
+t = '''
+This is the long text
+and see how it goes
+'''
+print(t)
+
+# loop array
+a = [1, 2, # split array
+     3, 4]
+for w in a:
+   print("w = " % w)
+  if x * 5 == 2:
+      while x < 5:
+         print 'hi there'
+
+    
+
+
