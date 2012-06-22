@@ -7,7 +7,8 @@ module Hasthon.Scanner (
    scan,
    SPos(..),
    toSPos,
-   fromSPos
+   fromSPos,
+   IntegerBase(..)
    ) where
 
 
@@ -16,7 +17,6 @@ import Text.Parsec.Prim
 import Text.Parsec.Char
 import Text.Parsec.String
 import Text.Parsec.Pos
-import Text.Parsec.Error
 import qualified Data.Set as Set
 import Data.List
 import Text.Parsec.Error
