@@ -46,7 +46,7 @@ data TokenType = TTIndent Int
 data LiteralValue = LTString Bool String
                   | LTBytes Bool String
                   | LTInteger IntegerBase String
-                  | LTFloat String
+                  | LTFloat String (Maybe String)
                   | LTImaginary String String
                   deriving (Eq, Show)
 
@@ -280,7 +280,18 @@ integerToken = do number <- octInteger <|> hexInteger <|> binInteger <|> decimal
 
 -- floating token
 floatingToken :: Parser TokenType
-floatingToken = fail "not support"
+floatingToken = (try pointFloat <|> exponentFloat) >>= return . TTLiteral
+   where pointFloat    = try (optionMaybe intPart >>= (\i -> fraction >>= (\f -> return $ LTFloat (i++f) Nothing)
+                         <|>
+                         intPart >>= (\i -> char '.' >> return $ LTFloat i None)
+         exponentFloat = (intPart <|> pointFloat >>= (\(LTFloat s _) -> return s) 
+                             >>= (\f -> exponent >>= return . LTFloat f
+         intPart       = many digit
+         fraction      = char '.' >> many digit >>= return . ('.':)
+         exponent      = (char 'e' <|> char 'E') >> optionMaybe 
+
+
+
 
 -- imaginary token
 imaginaryToken :: Parser TokenType
